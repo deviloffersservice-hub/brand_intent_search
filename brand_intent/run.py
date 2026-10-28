@@ -238,10 +238,11 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
     """Searches (LinkedIn seed posts, Reddit, news), then a crawl of LinkedIn's related posts from
     those seeds. Everything stops once the run has its target."""
     crawl = Crawl(now)
-    plan = ([("linkedin", q) for q in queries.rotation(queries.LINKEDIN_POSTS, 10, slot)] +
-            [("seed", q) for q in queries.rotation(queries.LINKEDIN_SEEDS, 6, slot)] +
+    # Topical seeds and news answer most often, so they go first; exact-ask phrases rarely do.
+    plan = ([("seed", q) for q in queries.rotation(queries.LINKEDIN_SEEDS, 8, slot)] +
+            [("news", q) for q in queries.rotation(queries.NEWS, 6, slot)] +
             [("reddit", q) for q in queries.rotation(queries.REDDIT, 4, slot)] +
-            [("news", q) for q in queries.rotation(queries.NEWS, 6, slot)])
+            [("linkedin", q) for q in queries.rotation(queries.LINKEDIN_POSTS, 8, slot)])
     for kind, q in plan:
         if len(out.brands) >= config.TARGET_BRANDS:
             break

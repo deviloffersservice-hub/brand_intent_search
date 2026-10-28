@@ -10,8 +10,9 @@ from . import config
 
 log = logging.getLogger(__name__)
 
-# "auto" lets ddgs choose among its engines; in practice it answers far more often than any one engine.
-BACKENDS = ["auto", "duckduckgo", "brave", "yahoo", "startpage", "mojeek"]
+# Order from a diagnostics run on GitHub's machines: yahoo and "auto" (ddgs picks an engine) answered
+# site:linkedin.com searches; the others rarely did.
+BACKENDS = ["yahoo", "auto", "duckduckgo", "brave", "startpage", "mojeek"]
 
 
 @dataclass
@@ -25,8 +26,9 @@ class Hit:
 
 class Searcher:
     """One query at a time with a gap between queries. A query no engine answers is often just a
-    phrase with no recent results, so it doesn't count against the engines by itself; three
-    unanswered queries in a row mean the engines are refusing us, and searching stops."""
+    phrase with no recent results, so it doesn't count against the engines by itself. From the third
+    unanswered query in a row, each one counts as a failure for every engine, and an engine is dropped
+    after ENGINE_MAX_FAILS failures; searching stops when no engine is left or the budget is spent."""
 
     ENGINE_MAX_FAILS = 4
 
@@ -46,7 +48,7 @@ class Searcher:
 
     @property
     def alive(self) -> bool:
-        return bool(self.fails) and self.dead_in_a_row < 3 and self.asked < config.SEARCHES_PER_RUN
+        return bool(self.fails) and self.asked < config.SEARCHES_PER_RUN
 
     def _pace(self):
         wait = config.SEARCH_GAP_SECONDS - (time.monotonic() - self._last)

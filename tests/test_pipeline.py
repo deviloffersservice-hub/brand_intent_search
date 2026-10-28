@@ -233,3 +233,22 @@ def test_crawl_follows_related_posts_to_a_brand_ask(monkeypatch):
     run.search_and_read(fetcher, FakeSearcher(text_hits={q: [Hit(seed, "", "")]}), FakeReddit(), out, NOW, 0)
     assert fetcher.fetched == [seed, ask]
     assert out.brands[0]["Source"] == "LinkedIn post (related posts)"
+
+
+def test_searcher_keeps_going_through_quiet_phrases(monkeypatch):
+    from brand_intent import search
+    monkeypatch.setattr(search.time, "sleep", lambda s: None)
+    monkeypatch.setattr(config, "SEARCH_GAP_SECONDS", 0)
+    answers = {"good": [{"href": "https://www.linkedin.com/posts/a_x-activity-1-b", "title": "t", "body": "b"}]}
+
+    class FakeDDGS:
+        def text(self, query, backend, **kw):
+            if query in answers and backend == "yahoo":
+                return answers[query]
+            raise RuntimeError("No results found.")
+
+    s = search.Searcher()
+    s._ddgs = FakeDDGS
+    for q in ["quiet1", "quiet2", "quiet3", "good", "quiet4"]:
+        s.text(q)
+    assert s.alive and s.answered == 1  # three quiet phrases in a row didn't end the searching
