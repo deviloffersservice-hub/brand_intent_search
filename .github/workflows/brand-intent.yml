@@ -13,6 +13,10 @@ on:
         description: "Dry run: print results, don't write to the sheet"
         type: boolean
         default: false
+      probe:
+        description: "Diagnostics only: test search styles and the job filter"
+        type: boolean
+        default: false
 
 concurrency:
   group: brand-intent
@@ -52,6 +56,10 @@ jobs:
       - run: pip install -r requirements.txt
         if: ${{ steps.gate.outputs.skip != 'true' }}
 
+      - name: Diagnostics
+        if: ${{ inputs.probe }}
+        run: python -m brand_intent.probe
+
       - name: Find brands, agencies and creators
-        if: ${{ steps.gate.outputs.skip != 'true' }}
+        if: ${{ steps.gate.outputs.skip != 'true' && !inputs.probe }}
         run: python -m brand_intent.run ${{ inputs.dry_run && '--dry-run' || '' }}
