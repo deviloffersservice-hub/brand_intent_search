@@ -34,16 +34,18 @@ jobs:
       GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
       PYTHONUNBUFFERED: "1"
     steps:
-      - name: Skip if the previous slot's run already happened
+      - name: Skip if this 3-hour slot already ran
         id: gate
         if: ${{ github.event_name == 'schedule' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow brand-intent.yml --event schedule --status success --limit 1 \
-                 --json createdAt --jq '.[0].createdAt // empty')
+          # The last scheduled run that did real work (over 3 minutes; runs that skipped take seconds).
+          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow brand-intent.yml --event schedule --status success \
+                 --limit 20 --json startedAt,updatedAt \
+                 --jq '[.[] | select(((.updatedAt|fromdate) - (.startedAt|fromdate)) > 180)][0].startedAt // empty')
           if [ -n "$last" ] && [ $(( $(date +%s) - $(date -d "$last" +%s) )) -lt 5400 ]; then
-            echo "last successful run at $last; skipping"; echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "a run did the work at $last; skipping"; echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/checkout@v4

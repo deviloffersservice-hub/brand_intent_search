@@ -113,6 +113,8 @@ def parse_post(page: str, url: str) -> Post:
     if data.get("datePublished"):
         try:
             published = datetime.fromisoformat(data["datePublished"].replace("Z", "+00:00"))
+            if published.tzinfo is None:
+                published = published.replace(tzinfo=timezone.utc)
         except ValueError:
             pass
     published = published or activity_time(activity_id_from_url(url))

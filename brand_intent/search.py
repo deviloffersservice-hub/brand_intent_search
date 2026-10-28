@@ -63,7 +63,7 @@ class Searcher:
     def news(self, query: str, timelimit: str = "w", max_results: int = 25) -> list[Hit]:
         # News only has a few engines; "auto" picks among them.
         return self._run(query, lambda d, b: d.news(query, region="wt-wt", timelimit=timelimit,
-                                                     max_results=max_results), news=True, backends=["auto"])
+                                                     max_results=max_results), news=True, backends=["news"])
 
     def _run(self, query, call, news: bool, backends=None) -> list[Hit]:
         if not self.alive:
@@ -81,7 +81,7 @@ class Searcher:
             hits = [h for h in hits if h.url]
             if hits:
                 for b in failed:
-                    self._failed(b)
+                    self._failed(b)  # (no-op for "news", which isn't a text engine)
                 if backend in self.fails:
                     self.fails[backend] = 0
                 self.dead_in_a_row = 0

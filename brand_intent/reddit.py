@@ -11,7 +11,7 @@ import requests
 
 log = logging.getLogger(__name__)
 
-THREAD_RE = re.compile(r"https?://(?:www\.|old\.)?reddit\.com/r/([^/]+)/comments/([a-z0-9]+)", re.I)
+THREAD_RE = re.compile(r"https?://(?:(?:www|old|new|m|np)\.)?reddit\.com/r/([^/]+)/comments/([a-z0-9]+)", re.I)
 
 
 @dataclass
@@ -31,7 +31,7 @@ def thread_url(url: str) -> tuple[str, str, str] | None:
     m = THREAD_RE.search(url or "")
     if not m:
         return None
-    return f"https://www.reddit.com/r/{m.group(1)}/comments/{m.group(2)}/", m.group(1), m.group(2)
+    return f"https://www.reddit.com/r/{m.group(1)}/comments/{m.group(2).lower()}/", m.group(1), m.group(2).lower()
 
 
 def parse_thread_json(data: list, url: str, subreddit: str) -> Thread:

@@ -267,3 +267,78 @@ def test_author_headline_is_never_the_post_text():
             + "We are looking for an influencer marketing agency. " * 20 + '</p>')
     p = parse_post(page, post_url("jane"))
     assert p.author.name == "Jane" and p.author.headline == ""
+
+
+# --- cases from the code review -------------------------------------------------------------------
+def test_same_post_written_differently_is_one_row():
+    a = aid(1)
+    forms = [f"https://www.linkedin.com/posts/mamaearth_%E0%A4%B9-activity-{a}-AbCd",
+             f"https://www.linkedin.com/posts/mamaearth_ह-activity-{a}-XyZw/",
+             f"https://in.linkedin.com/posts/MAMAEARTH_x-activity-{a}-ab?utm_source=share",
+             f"https://www.linkedin.com/feed/update/urn:li:activity:{a}/"]
+    assert len({run.url_key(u) for u in forms}) == 1
+    out = run.Collector([{"Post / Job URL": forms[0]}], [], [])
+    assert out.seen(forms[1]) and out.seen(forms[3])
+    assert not out.add_brand({"Post / Job URL": forms[2]})
+
+
+def test_jobs_and_reddit_keys():
+    assert run.url_key("https://www.linkedin.com/jobs/view/influencer-marketing-at-nykaa-4483607308") == \
+        run.url_key("https://in.linkedin.com/jobs/view/influencer-marketing-at-nykaa-4483607308/?trk=x")
+    assert run.url_key("https://www.reddit.com/r/IndianStartups/comments/AbC123/x") == \
+        run.url_key("https://old.reddit.com/r/indianstartups/comments/abc123/")
+    out = run.Collector([{"Brand / Company": "Honasa Consumer Ltd", "Source": "LinkedIn job (x)", "Post / Job URL": "a"},
+                         {"Brand / Company": "Acme", "Company LinkedIn": "https://www.linkedin.com/company/acme-in",
+                          "Source": "LinkedIn job (x)", "Post / Job URL": "b"}], [], [])
+    assert out.company_listed("Honasa Consumer Limited", "https://www.linkedin.com/company/honasa")
+    assert not out.company_listed("Acme", "https://www.linkedin.com/company/acme-us")
+    assert out.company_listed("Acme", "https://www.linkedin.com/company/acme-in")
+
+
+def test_undated_reddit_snippets_and_news_are_skipped():
+    from brand_intent.reddit import Thread
+    out = run.Collector([], [], [])
+
+    class R:
+        def thread(self, url, title, snippet):
+            return Thread(url="https://www.reddit.com/r/IndianStartups/comments/zz/", subreddit="IndianStartups",
+                          title="Looking for an influencer marketing agency", text="", published=None)
+    run.handle_reddit(R(), Hit("https://www.reddit.com/r/IndianStartups/comments/zz/x", "", ""), out, NOW)
+    run.handle_news(Hit("https://news/9", "Bisleri calls for creative pitch in India", "", None), out, NOW)
+    assert out.brands == []
+
+
+def test_indiana_is_not_india():
+    from brand_intent.reddit import Thread
+
+    class R:
+        def thread(self, url, title, snippet):
+            return Thread(url="https://www.reddit.com/r/Indiana/comments/q1/", subreddit="Indiana",
+                          title="Looking for influencers for my bakery in Fort Wayne", text="", published=NOW)
+    out = run.Collector([], [], [])
+    run.handle_reddit(R(), Hit("https://www.reddit.com/r/Indiana/comments/q1/x", "", ""), out, NOW)
+    assert out.brands == [] or out.brands[0]["Market"] != "India"
+
+
+def test_news_about_an_agency_is_not_a_brand():
+    out = run.Collector([], [], [])
+    run.handle_news(Hit("https://n/1", "WPP India seeks partners for influencer mandate in Bengaluru", "", NOW), out, NOW)
+    assert out.brands == []
+
+
+def test_naive_dates_do_not_crash():
+    page = ('<script type="application/ld+json">{"@type": "SocialMediaPosting", "datePublished": "2026-10-27T10:00:00",'
+            ' "articleBody": "hello"}</script>')
+    p = parse_post(page, post_url("x"))
+    assert p.published.tzinfo is not None
+    assert run.recent(p.published, NOW) in (True, False)
+
+
+def test_comment_counts_include_people_already_listed():
+    out = run.Collector([], [{"Profile": "https://www.linkedin.com/in/riya"}], [])
+    post = Post(url=post_url("acme"), author=Person("Acme", "https://www.linkedin.com/company/acme", "company", "in"),
+                published=NOW, text="We are looking for an influencer marketing agency",
+                comments=[Comment(Person("Riya", "https://www.linkedin.com/in/riya", "in", "in",
+                                         "Founder, Spark Influencer Agency"), "We'd love to help")])
+    run.handle_post(FakeFetcher(posts={post.url: post}), post.url, out, NOW, "search")
+    assert out.brands[0]["Agencies in Comments"] == 1 and out.agencies == []

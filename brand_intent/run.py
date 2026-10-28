@@ -28,33 +28,73 @@ JOB_TITLE_RE = re.compile(r"influencer|creator|ugc|\bkol\b|brand partnership|tal
                           r"linkedin (?:marketing|content|creator|brand|ghost ?writ|influencer)", re.I)
 
 
+def url_key(url: str) -> str:
+    """The same post/job/thread written differently (encoding, case, trailing '/', tracking suffix,
+    ugcPost vs activity) gets the same key."""
+    url = (url or "").strip()
+    if (aid := activity_id_from_url(url) or (re.search(r"ugcPost[-:](\d{15,})", url) or [None, None])[1]):
+        return f"li:{aid}"
+    if (m := re.search(r"linkedin\.com/jobs/view/[^?#]*?(\d{6,})/?(?:[?#]|$)", url)):
+        return f"job:{m.group(1)}"
+    if (t := thread_url(url)):
+        return f"reddit:{t[2].lower()}"
+    return re.sub(r"^https?://(?:www\.)?", "", url.lower()).rstrip("/").split("?")[0]
+
+
+def company_keys(name: str, company_url: str = "") -> set[str]:
+    """A company from a job: its LinkedIn page slug and its name without 'Ltd'/'Limited'/'Pvt'...,
+    so 'Honasa Consumer Ltd' and 'Honasa Consumer Limited' match. Two different companies with the
+    same name but different pages are told apart by the page."""
+    keys = set()
+    if "/company/" in company_url:
+        keys.add("page:" + company_url.rstrip("/").rsplit("/company/", 1)[-1].lower())
+    name = re.sub(r"\b(?:pvt|private|ltd|limited|llp|llc|inc|corp|corporation|co)\b\.?", "", name.lower())
+    if (name := re.sub(r"[^a-z0-9]+", " ", name).strip()):
+        keys.add("name:" + name)
+    return keys
+
+
 class Collector:
     """New rows for the three tabs, deduplicated against the sheet and within the run."""
 
     def __init__(self, existing_brands: list[dict], existing_agencies: list[dict], existing_creators: list[dict]):
-        self.brand_urls = {r.get("Post / Job URL", "") for r in existing_brands}
-        self.job_companies = {r.get("Brand / Company", "").lower() for r in existing_brands
-                              if r.get("Source", "").startswith("LinkedIn job")}
+        self.brand_urls = {url_key(r.get("Post / Job URL", "")) for r in existing_brands} - {""}
+        # (page, name) key pairs of companies already listed from jobs
+        self.job_companies = [company_keys(r.get("Brand / Company", ""), r.get("Company LinkedIn", ""))
+                              for r in existing_brands if r.get("Source", "").startswith("LinkedIn job")]
         self.news_brands = {r.get("Brand / Company", "").lower() for r in existing_brands
                             if r.get("Source", "").startswith("News") and r.get("Brand / Company")}
-        self.people = {r.get("Profile", "") for r in existing_agencies + existing_creators}
+        self.people = {r.get("Profile", "").lower().rstrip("/") for r in existing_agencies + existing_creators}
         self.brands: list[dict] = []
         self.agencies: list[dict] = []
         self.creators: list[dict] = []
         self.skipped = Counter()
 
+    def company_listed(self, name: str, company_url: str) -> bool:
+        """Same page, or same name where either side has no page."""
+        new = company_keys(name, company_url)
+        new_page = {k for k in new if k.startswith("page:")}
+        for old in self.job_companies:
+            old_page = {k for k in old if k.startswith("page:")}
+            if (new_page & old_page) or ((not new_page or not old_page) and (new & old)):
+                return True
+        return False
+
+    def seen(self, url: str) -> bool:
+        return url_key(url) in self.brand_urls
+
     def add_brand(self, row: dict) -> bool:
-        url = row["Post / Job URL"]
-        if url in self.brand_urls:
+        key = url_key(row["Post / Job URL"])
+        if key in self.brand_urls:
             self.skipped["already in sheet"] += 1
             return False
-        self.brand_urls.add(url)
+        self.brand_urls.add(key)
         row["Added At (IST)"] = fmt_time(datetime.now(timezone.utc))
         self.brands.append(row)
         return True
 
     def add_person(self, kind: str, row: dict) -> bool:
-        key = row["Profile"]
+        key = row["Profile"].lower().rstrip("/")
         if not key or key in self.people:
             return False
         self.people.add(key)
@@ -87,9 +127,9 @@ def collect_jobs(fetcher: Fetcher, out: Collector, now: datetime):
                         out.skipped["job at an agency"] += 1
                         continue
                     mkt = intent.market("", "", job.location) or ("US" if loc == "United States" else "")
-                    if not mkt or job.company.lower() in out.job_companies:
+                    if not mkt or out.company_listed(job.company, job.company_url):
                         continue
-                    out.job_companies.add(job.company.lower())
+                    out.job_companies.append(company_keys(job.company, job.company_url))
                     out.add_brand({"Brand / Company": job.company, "Company LinkedIn": job.company_url,
                                    "Looking For": "Hiring: " + job.title, "Market": mkt,
                                    "Source": f"LinkedIn job ({job.location})", "Post / Job URL": job.url,
@@ -127,16 +167,15 @@ def handle_post(fetcher: Fetcher, url: str, out: Collector, now: datetime, found
     agencies = creators = 0
     for c in post.comments:
         p = c.author
-        kind = intent.commenter_type(p.name, p.headline, p.is_company, c.text)
+        kind = intent.commenter_type(p.name, p.headline, p.is_company, c.text, looking)
         if not kind or p.url == a.url:
             continue
-        added = out.add_person(kind, {"Name": p.name, "Profile": p.url, "Headline": p.headline,
-                                      "Page Type": "Company page" if p.is_company else "Person",
-                                      "Country": country_name(p.country), "Found Via": "Comment on brand post",
-                                      "Comment / Post": c.text[:500], "Brand": brand or a.name,
-                                      "Brand Post URL": post.url})
-        agencies += kind == "Agency" and added
-        creators += kind == "Creator" and added
+        agencies += kind == "Agency"  # everyone who replied, even if already listed from another post
+        creators += kind == "Creator"
+        out.add_person(kind, {"Name": p.name, "Profile": p.url, "Headline": p.headline,
+                              "Page Type": "Company page" if p.is_company else "Person",
+                              "Country": country_name(p.country), "Found Via": "Comment on brand post",
+                              "Comment / Post": c.text[:500], "Brand": brand or a.name, "Brand Post URL": post.url})
     out.add_brand({"Brand / Company": brand, "Company LinkedIn": a.url if a.is_company else "",
                    "Posted By": a.name, "Poster Profile": a.url, "Poster Headline": a.headline,
                    "Looking For": ", ".join(looking), "Platforms Mentioned": ", ".join(intent.platforms(post.text)),
@@ -149,10 +188,10 @@ def handle_post(fetcher: Fetcher, url: str, out: Collector, now: datetime, found
 # --- Reddit -------------------------------------------------------------------------------------
 def handle_reddit(reddit: Reddit, hit, out: Collector, now: datetime):
     t = reddit.thread(hit.url, hit.title, hit.snippet)
-    if not t or t.url in out.brand_urls:
+    if not t or out.seen(t.url):
         return
-    if t.published and not recent(t.published, now):
-        out.skipped["post older than 14 days"] += 1
+    if not recent(t.published, now):  # also when the date is unknown: the 14-day rule is strict
+        out.skipped["post older than 14 days or undated"] += 1
         return
     blob = f"{t.title}. {t.text}"
     looking = intent.wants(blob)
@@ -160,19 +199,21 @@ def handle_reddit(reddit: Reddit, hit, out: Collector, now: datetime):
         out.skipped["post isn't an ask"] += 1
         return
     # India subreddits (r/india, r/IndianStartups, r/IndiaBusiness...) count as Indian posters.
-    mkt = intent.market("in" if "india" in t.subreddit.lower() else "", blob)
+    mkt = intent.market("in" if re.search(r"india(?!na)", t.subreddit, re.I) else "", blob)
     if not mkt:
         out.skipped["not India/US"] += 1
         return
     agencies = creators = 0
     for user, body in t.comments:
         kind = intent.reddit_commenter_type(body)
-        if kind and out.add_person(kind, {"Name": f"u/{user}", "Profile": f"https://www.reddit.com/user/{user}",
-                                          "Page Type": "Reddit user", "Found Via": "Comment on Reddit post",
-                                          "Comment / Post": body[:500], "Brand": f"u/{t.author}" if t.author else "",
-                                          "Brand Post URL": t.url}):
-            agencies += kind == "Agency"
-            creators += kind == "Creator"
+        if not kind:
+            continue
+        agencies += kind == "Agency"
+        creators += kind == "Creator"
+        out.add_person(kind, {"Name": f"u/{user}", "Profile": f"https://www.reddit.com/user/{user}",
+                              "Page Type": "Reddit user", "Found Via": "Comment on Reddit post",
+                              "Comment / Post": body[:500], "Brand": f"u/{t.author}" if t.author else "",
+                              "Brand Post URL": t.url})
     out.add_brand({"Brand / Company": "", "Posted By": f"u/{t.author}" if t.author else "",
                    "Poster Profile": f"https://www.reddit.com/user/{t.author}" if t.author else "",
                    "Looking For": ", ".join(looking), "Platforms Mentioned": ", ".join(intent.platforms(blob)),
@@ -183,7 +224,8 @@ def handle_reddit(reddit: Reddit, hit, out: Collector, now: datetime):
 
 # --- news ---------------------------------------------------------------------------------------
 def handle_news(hit, out: Collector, now: datetime):
-    if hit.published and not recent(hit.published, now):
+    if not recent(hit.published, now):  # also when the date is unknown
+        out.skipped["news older than 14 days or undated"] += 1
         return
     looking = intent.news_wants(hit.title, hit.snippet)
     mkt = intent.market("", f"{hit.title}. {hit.snippet}")
@@ -191,10 +233,14 @@ def handle_news(hit, out: Collector, now: datetime):
         out.skipped["news not an ask / not India-US"] += 1
         return
     brand = intent.brand_from_title(hit.title)
+    if brand and intent.looks_like_agency(brand):
+        out.skipped["news about an agency"] += 1
+        return
     if brand and brand.lower() in out.news_brands:  # the same story from another outlet
         out.skipped["news: same brand already listed"] += 1
         return
-    out.news_brands.add(brand.lower())
+    if brand:
+        out.news_brands.add(brand.lower())
     out.add_brand({"Brand / Company": brand, "Looking For": ", ".join(looking),
                    "Platforms Mentioned": ", ".join(intent.platforms(hit.snippet)), "Market": mkt,
                    "Source": f"News ({hit.source})" if hit.source else "News", "Post / Job URL": hit.url,
@@ -221,9 +267,9 @@ class Crawl:
     def push(self, url: str, priority: int, origin: str = "related posts"):
         url = canonical_post_url(url)
         aid = activity_id_from_url(url)
-        if url in self.queued or (aid and not recent(activity_time(aid), self.now)):
+        if url_key(url) in self.queued or (aid and not recent(activity_time(aid), self.now)):
             return  # old posts are skipped without fetching: the date is in the link
-        self.queued.add(url)
+        self.queued.add(url_key(url))
         self.origin[url] = origin
         self.n += 1
         heapq.heappush(self.heap, (priority, -int(aid or 0), self.n, url))
@@ -271,7 +317,7 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
 
     pages = with_related = 0
     while len(out.brands) < config.TARGET_BRANDS and pages < config.MAX_POST_PAGES and (url := crawl.pop()):
-        if url in out.brand_urls:
+        if out.seen(url):
             continue
         pages += 1
         try:
