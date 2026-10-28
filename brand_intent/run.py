@@ -267,6 +267,7 @@ class Crawl:
         self.origin: dict[str, str] = {}
         self.later: dict[str, int] = {}  # url -> unix time it will be old enough to show related posts
         self.n = 0
+        self.cards = Counter()  # what happened to related-post cards (for the log)
 
     def age_days(self, url: str) -> float | None:
         aid = activity_id_from_url(url)
@@ -326,11 +327,15 @@ class Crawl:
     def add_related(self, post):
         for r in post.related:
             if r.published and not recent(r.published, self.now):
-                continue
-            if intent.wants(r.text):
+                self.cards["older than 14 days"] += 1
+            elif intent.wants(r.text):
+                self.cards["asks"] += 1
                 self.push(r.url, 0)
             elif TOPICAL.search(r.text):
+                self.cards["on topic"] += 1
                 self.push(r.url, 1)
+            else:
+                self.cards["off topic" if r.text else "no text"] += 1
 
 
 def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: Collector, now: datetime, slot: int,
@@ -382,10 +387,12 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
                 crawl.read_later(url)
         if pages % 50 == 0:
             log.info("crawl: %d posts read, %d brands so far, %d queued", pages, len(out.brands), len(crawl.heap))
-    log.info("crawl: %d LinkedIn posts read, %d of them showed related posts", pages, with_related)
+    log.info("crawl: %d LinkedIn posts read, %d of them showed related posts; related cards: %s",
+             pages, with_related, dict(crawl.cards.most_common()))
     if save_state:
         crawl.save(config.STATE_FILE)
-        log.info("crawl: %d unread posts kept for the next run", min(len(crawl.heap), config.QUEUE_KEEP))
+        log.info("crawl: %d unread posts kept for the next run, %d to re-read when old enough",
+                 min(len(crawl.heap), config.QUEUE_KEEP), len(crawl.later))
 
 
 def _safely(fn, *args):
