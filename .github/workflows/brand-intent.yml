@@ -62,6 +62,21 @@ jobs:
         if: ${{ inputs.probe }}
         run: python -m brand_intent.probe
 
+      - name: Restore the crawl queue from earlier runs
+        if: ${{ steps.gate.outputs.skip != 'true' && !inputs.probe && !inputs.dry_run }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .state
+          key: brand-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: brand-state-
+
       - name: Find brands, agencies and creators
         if: ${{ steps.gate.outputs.skip != 'true' && !inputs.probe }}
         run: python -m brand_intent.run ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Keep the crawl queue for the next run
+        if: ${{ always() && steps.gate.outputs.skip != 'true' && !inputs.probe && !inputs.dry_run }}
+        uses: actions/cache/save@v4
+        with:
+          path: .state
+          key: brand-state-${{ github.run_id }}-${{ github.run_attempt }}

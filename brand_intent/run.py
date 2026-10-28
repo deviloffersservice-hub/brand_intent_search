@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import argparse
 import heapq
+import json
 import logging
+import os
 import re
 import sys
 import time
@@ -270,12 +272,31 @@ class Crawl:
         if url_key(url) in self.queued or (aid and not recent(activity_time(aid), self.now)):
             return  # old posts are skipped without fetching: the date is in the link
         self.queued.add(url_key(url))
-        self.origin[url] = origin
+        self.origin[url_key(url)] = origin
         self.n += 1
         heapq.heappush(self.heap, (priority, -int(aid or 0), self.n, url))
 
     def pop(self) -> str | None:
         return heapq.heappop(self.heap)[-1] if self.heap else None
+
+    # Some GitHub machines are served post pages without "More relevant posts", which would leave
+    # the crawl with nothing to read; the unread queue is kept between runs so it never starts empty.
+    def load(self, path: str):
+        try:
+            with open(path) as f:
+                saved = json.load(f)
+        except (OSError, ValueError):
+            return
+        for priority, url, origin in saved:
+            self.push(url, int(priority), origin)
+        log.info("crawl: %d unread posts carried over from earlier runs", len(self.heap))
+
+    def save(self, path: str):
+        keep = [[p, url, self.origin.get(url_key(url), "related posts")]
+                for p, _, _, url in sorted(self.heap)[: config.QUEUE_KEEP]]
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(keep, f)
 
     def add_related(self, post):
         for r in post.related:
@@ -287,10 +308,13 @@ class Crawl:
                 self.push(r.url, 1)
 
 
-def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: Collector, now: datetime, slot: int):
+def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: Collector, now: datetime, slot: int,
+                    save_state: bool = False):
     """Searches (LinkedIn seed posts, Reddit, news), then a crawl of LinkedIn's related posts from
     those seeds. Everything stops once the run has its target."""
     crawl = Crawl(now)
+    if save_state:
+        crawl.load(config.STATE_FILE)
     # Topical seeds and news answer most often, so they go first; exact-ask phrases rarely do.
     plan = ([("seed", q) for q in queries.rotation(queries.LINKEDIN_SEEDS, 8, slot)] +
             [("news", q) for q in queries.rotation(queries.NEWS, 6, slot)] +
@@ -321,7 +345,7 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
             continue
         pages += 1
         try:
-            post = _safely(handle_post, fetcher, url, out, now, crawl.origin.get(url, "related posts"))
+            post = _safely(handle_post, fetcher, url, out, now, crawl.origin.get(url_key(url), "related posts"))
         except Blocked as e:
             log.warning("LinkedIn stopped serving posts (%s)", e)
             break
@@ -331,6 +355,9 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
         if pages % 50 == 0:
             log.info("crawl: %d posts read, %d brands so far, %d queued", pages, len(out.brands), len(crawl.heap))
     log.info("crawl: %d LinkedIn posts read, %d of them showed related posts", pages, with_related)
+    if save_state:
+        crawl.save(config.STATE_FILE)
+        log.info("crawl: %d unread posts kept for the next run", min(len(crawl.heap), config.QUEUE_KEEP))
 
 
 def _safely(fn, *args):
@@ -374,7 +401,7 @@ def run(dry_run: bool) -> int:
     slot = int(time.time() // (3 * 3600))
     try:
         # Brands that say so in a post first; job listings fill up the rest of the target.
-        search_and_read(fetcher, searcher, reddit, out, now, slot)
+        search_and_read(fetcher, searcher, reddit, out, now, slot, save_state=not dry_run)
         try:
             collect_jobs(fetcher, out, now)
         except Blocked as e:

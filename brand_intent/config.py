@@ -28,4 +28,7 @@ MAX_CONSECUTIVE_BLOCKS = _int("MAX_CONSECUTIVE_BLOCKS", 3)
 REQUEST_DELAY_MIN = _float("REQUEST_DELAY_MIN", 1.0)
 REQUEST_DELAY_MAX = _float("REQUEST_DELAY_MAX", 2.5)
 
+STATE_FILE = os.environ.get("STATE_FILE", ".state/crawl_queue.json")  # kept between runs (Actions cache)
+QUEUE_KEEP = _int("QUEUE_KEEP", 3000)  # unread posts carried to the next run
+
 IST = timezone(timedelta(hours=5, minutes=30))

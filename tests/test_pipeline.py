@@ -351,3 +351,17 @@ def test_sheet_check_reports_duplicates(caplog):
     run.sheet_check([{"Post / Job URL": f"https://www.linkedin.com/posts/x_y-activity-{a}-ab"},
                      {"Post / Job URL": f"https://in.linkedin.com/posts/x_y-activity-{a}-cd/"}], [], [])
     assert "duplicate brand links: 1" in caplog.text
+
+
+def test_crawl_queue_survives_between_runs(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "STATE_FILE", str(tmp_path / "q.json"))
+    c = run.Crawl(NOW)
+    c.push(post_url("asker"), 0, "search")
+    c.push(post_url("topical", 2), 1)
+    c.push(post_url("old", 40), 1)  # too old: never queued
+    c.save(config.STATE_FILE)
+    later = run.Crawl(NOW)
+    later.load(config.STATE_FILE)
+    assert len(later.heap) == 2 and later.pop() == post_url("asker")
+    assert later.origin[run.url_key(post_url("asker"))] == "search"
+    run.Crawl(NOW).load(str(tmp_path / "missing.json"))  # no saved queue yet: fine
