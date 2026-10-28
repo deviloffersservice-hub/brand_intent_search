@@ -1,0 +1,71 @@
+"""Google Sheets access with a service account (key in GOOGLE_SERVICE_ACCOUNT_JSON)."""
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime
+
+import gspread
+from google.oauth2.service_account import Credentials
+
+from . import config
+
+BRAND_HEADERS = ["Added At (IST)", "Brand / Company", "Company LinkedIn", "Posted By", "Poster Profile",
+                 "Poster Headline", "Looking For", "Platforms Mentioned", "Market", "Source", "Post / Job URL",
+                 "Posted On", "Matched Text", "Post Text", "Agencies in Comments", "Creators in Comments"]
+PEOPLE_HEADERS = ["Added At (IST)", "Name", "Profile", "Headline", "Page Type", "Country", "Found Via",
+                  "Comment / Post", "Brand", "Brand Post URL"]
+
+
+def fmt_time(dt: datetime | None) -> str:
+    return dt.astimezone(config.IST).strftime("%Y-%m-%d %H:%M") if dt else ""
+
+
+def fmt_date(dt: datetime | None) -> str:
+    return dt.astimezone(config.IST).strftime("%Y-%m-%d") if dt else ""
+
+
+def _client() -> gspread.Client:
+    raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    info = json.loads(raw) if raw else json.load(open("service_account.json"))
+    creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+    return gspread.authorize(creds)
+
+
+class Tab:
+    """A worksheet addressed by header names; created with its headers if missing. Writes are RAW."""
+
+    def __init__(self, book: gspread.Spreadsheet, title: str, headers: list[str]):
+        try:
+            self.ws = book.worksheet(title)
+        except gspread.WorksheetNotFound:
+            self.ws = book.add_worksheet(title=title, rows=1000, cols=len(headers))
+        current = self.ws.row_values(1)
+        if not any(current):
+            self.ws.update(values=[headers], range_name="A1", value_input_option="RAW")
+            self.ws.freeze(rows=1)
+            current = list(headers)
+        missing = [h for h in headers if h not in current]
+        if missing:
+            current += missing
+            if self.ws.col_count < len(current):
+                self.ws.add_cols(len(current) - self.ws.col_count)
+            self.ws.update(values=[current], range_name="A1", value_input_option="RAW")
+        self.headers = current
+
+    def rows(self) -> list[dict]:
+        values = self.ws.get_all_values()
+        return [{h: (r[i] if i < len(r) else "") for i, h in enumerate(self.headers)} for r in values[1:] if any(r)]
+
+    def append(self, records: list[dict]):
+        if records:
+            self.ws.append_rows([[str(r.get(h, ""))[:5000] for h in self.headers] for r in records],
+                                value_input_option="RAW", insert_data_option="INSERT_ROWS", table_range="A1")
+
+
+class Book:
+    def __init__(self, sheet_id: str = config.SHEET_ID):
+        book = _client().open_by_key(sheet_id)
+        self.brands = Tab(book, config.BRANDS_TAB, BRAND_HEADERS)
+        self.agencies = Tab(book, config.AGENCIES_TAB, PEOPLE_HEADERS)
+        self.creators = Tab(book, config.CREATORS_TAB, PEOPLE_HEADERS)

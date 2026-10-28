@@ -1,0 +1,72 @@
+"""Search phrases. Each run takes the next slice of each list (rotating), so every phrase gets used
+over a day without any single run asking too much of the search engines."""
+
+# Brands posting on LinkedIn that they want an agency or creators.
+LINKEDIN_POSTS = [
+    '"looking for an influencer marketing agency"',
+    '"looking for influencer marketing agency"',
+    '"recommend an influencer marketing agency"',
+    '"influencer marketing agency" recommendations',
+    '"looking for LinkedIn influencers"',
+    '"looking for LinkedIn creators"',
+    '"LinkedIn creators" collaborate brand',
+    '"looking for creators" collaborate',
+    '"looking for influencers" collaborate',
+    '"looking for UGC creators"',
+    '"looking for micro influencers"',
+    '"want to collaborate with influencers"',
+    '"looking for a marketing agency"',
+    '"looking for a digital marketing agency"',
+    '"looking for a social media agency"',
+    '"looking for a LinkedIn marketing agency"',
+    '"LinkedIn ghostwriter" looking for',
+    '"looking for a performance marketing agency"',
+    '"looking for influencer marketing agency" India',
+    '"looking for influencers" India brand',
+    '"looking for creators" India brand',
+    '"digital marketing agency" recommendations Mumbai OR Bangalore OR Delhi',
+    '"marketing agency" recommendations startup India',
+    '"influencer marketing agency" India "looking for"',
+]
+
+# Reddit threads where a brand or founder asks for an agency or creators.
+REDDIT = [
+    '"influencer marketing agency" recommend',
+    '"looking for influencers" brand',
+    '"looking for an agency" marketing India',
+    '"influencer marketing" agency India startup',
+    '"LinkedIn marketing agency"',
+    '"looking for UGC creators"',
+    '"digital marketing agency" recommend India',
+    '"hire" "influencer marketing agency"',
+]
+
+# News and trade press: brands calling agency pitches or seeking marketing partners.
+NEWS = [
+    "calls for agency pitch influencer",
+    "influencer marketing mandate agency",
+    "invites agencies pitch digital mandate",
+    "brand seeks influencer marketing agency",
+    "creative mandate pitch India brand",
+    "social media mandate agency India",
+    "RFP influencer marketing agency",
+    "brand looking for marketing agency India",
+]
+
+# LinkedIn jobs: a company hiring for these roles is investing in influencer/creator marketing.
+JOB_KEYWORDS = [
+    "influencer marketing",
+    "creator partnerships",
+    "creator marketing",
+    "influencer marketing manager",
+    "LinkedIn marketing",
+]
+JOB_LOCATIONS = ["India", "United States"]
+
+
+def rotation(items: list[str], k: int, slot: int) -> list[str]:
+    """k items starting at a slot-dependent offset, wrapping around."""
+    if not items:
+        return []
+    start = (slot * k) % len(items)
+    return [items[(start + i) % len(items)] for i in range(min(k, len(items)))]
