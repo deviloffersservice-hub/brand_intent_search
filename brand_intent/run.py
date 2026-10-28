@@ -35,6 +35,8 @@ class Collector:
         self.brand_urls = {r.get("Post / Job URL", "") for r in existing_brands}
         self.job_companies = {r.get("Brand / Company", "").lower() for r in existing_brands
                               if r.get("Source", "").startswith("LinkedIn job")}
+        self.news_brands = {r.get("Brand / Company", "").lower() for r in existing_brands
+                            if r.get("Source", "").startswith("News") and r.get("Brand / Company")}
         self.people = {r.get("Profile", "") for r in existing_agencies + existing_creators}
         self.brands: list[dict] = []
         self.agencies: list[dict] = []
@@ -188,7 +190,12 @@ def handle_news(hit, out: Collector, now: datetime):
     if not looking or not mkt:
         out.skipped["news not an ask / not India-US"] += 1
         return
-    out.add_brand({"Brand / Company": intent.brand_from_title(hit.title), "Looking For": ", ".join(looking),
+    brand = intent.brand_from_title(hit.title)
+    if brand and brand.lower() in out.news_brands:  # the same story from another outlet
+        out.skipped["news: same brand already listed"] += 1
+        return
+    out.news_brands.add(brand.lower())
+    out.add_brand({"Brand / Company": brand, "Looking For": ", ".join(looking),
                    "Platforms Mentioned": ", ".join(intent.platforms(hit.snippet)), "Market": mkt,
                    "Source": f"News ({hit.source})" if hit.source else "News", "Post / Job URL": hit.url,
                    "Posted On": fmt_date(hit.published), "Matched Text": hit.title,

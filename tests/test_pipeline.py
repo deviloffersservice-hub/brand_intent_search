@@ -252,3 +252,18 @@ def test_searcher_keeps_going_through_quiet_phrases(monkeypatch):
     for q in ["quiet1", "quiet2", "quiet3", "good", "quiet4"]:
         s.text(q)
     assert s.alive and s.answered == 1  # three quiet phrases in a row didn't end the searching
+
+
+def test_same_news_story_from_two_outlets_is_one_row():
+    out = run.Collector([], [], [])
+    for url, src in (("https://a/1", "Storyboard18"), ("https://b/2", "MediaNews4U")):
+        run.handle_news(Hit(url, "ICC invites pitches for marketing, PR mandate", "in Mumbai", NOW, src), out, NOW)
+    assert len(out.brands) == 1
+
+
+def test_author_headline_is_never_the_post_text():
+    page = ('<a href="https://www.linkedin.com/in/jane?trk=x" data-tracking-control-name="public_post_feed-actor-name">'
+            'Jane</a><div></div><p data-test-id="main-feed-activity-card__commentary" class="attributed-text-segment-list__content">'
+            + "We are looking for an influencer marketing agency. " * 20 + '</p>')
+    p = parse_post(page, post_url("jane"))
+    assert p.author.name == "Jane" and p.author.headline == ""

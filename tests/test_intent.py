@@ -44,3 +44,10 @@ def test_agencies_and_recruiters_are_not_brands():
 def test_news_pitches():
     assert intent.news_wants("Mamaearth calls for digital creative pitch") == ["Agency pitch / mandate"]
     assert intent.brand_from_title("Tata Motors seeks influencer marketing agency") == "Tata Motors"
+
+
+def test_job_titles_and_creator_economy_talk_are_not_asks():
+    assert intent.wants("We're hiring a Head of Creator Media in NYC") == []
+    assert intent.wants("So hire a Head of Creator Media. In two years it will be obvious") == []
+    assert intent.wants("We are hiring a creator partnerships manager") == []
+    assert intent.wants("Hiring creators for our new skincare launch, DM if interested") == ["Creators / influencers"]

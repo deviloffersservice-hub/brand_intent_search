@@ -48,14 +48,14 @@ LINKEDIN_SEEDS = [
 
 # Reddit threads where a brand or founder asks for an agency or creators.
 REDDIT = [
-    '"influencer marketing agency" recommend',
-    '"looking for influencers" brand',
-    '"looking for an agency" marketing India',
-    '"influencer marketing" agency India startup',
-    '"LinkedIn marketing agency"',
-    '"looking for UGC creators"',
-    '"digital marketing agency" recommend India',
-    '"hire" "influencer marketing agency"',
+    "influencer marketing agency recommendation",
+    "looking for influencers for my brand",
+    "looking for marketing agency India",
+    "influencer marketing agency India startup",
+    "LinkedIn marketing agency recommendation",
+    "looking for UGC creators",
+    "digital marketing agency recommendation India",
+    "hire influencer marketing agency",
 ]
 
 # News and trade press: brands calling agency pitches or seeking marketing partners.

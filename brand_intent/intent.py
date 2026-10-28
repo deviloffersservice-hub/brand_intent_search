@@ -21,7 +21,10 @@ TARGETS = {
     "Influencer marketing agency": r"influencer(?:[- ]marketing)? (?:agenc(?:y|ies)|partners?|firms?|platforms?)",
     "Creators / influencers": r"(?:influencers?|content creators?|creators?|ugc creators?|micro[- ]influencers?|"
                               r"nano[- ]influencers?|youtubers?|instagrammers?|bloggers?|kols?)\b"
-                              r"(?![- ](?:marketing|agenc|partners?\b|firms?\b|platforms?\b))",
+                              r"(?![- ](?:marketing|agenc|partners?\b|partnerships?\b|firms?\b|platforms?\b|"
+                              r"media\b|economy|programs?\b|funds?\b|studios?\b|tools?\b|head\b|managers?\b|"
+                              r"leads?\b|directors?\b|coordinators?\b|specialists?\b|executives?\b|interns?\b|"
+                              r"relations\b|strategists?\b|success\b))",
     "Marketing agency": r"(?:(?:digital|social media|performance|growth|content|creative|branding|brand|pr|"
                         r"linkedin|b2b|marketing|seo|advertising|ad) )+(?:agenc(?:y|ies)|partners?|firms?|consultants?|"
                         r"freelancers?)",

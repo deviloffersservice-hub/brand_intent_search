@@ -122,12 +122,17 @@ def parse_post(page: str, url: str) -> Post:
 
     # Post author: the actor link at the top of the post, then the headline line under it.
     author = Person(name=(data.get("author") or {}).get("name", ""))
-    actor = re.search(r'<a[^>]+href="([^"]+)"[^>]*data-tracking-control-name="public_post_feed-actor-name"[^>]*>(.*?)</a>'
-                      r'(.*?)</p>', page, re.S)
+    actor = re.search(r'<a[^>]+href="([^"]+)"[^>]*data-tracking-control-name="public_post_feed-actor-name"[^>]*>(.*?)</a>',
+                      page, re.S)
     if actor:
         author = person_from_link(actor.group(1), _text(actor.group(2)) or author.name)
-        lines = re.findall(r"<p[^>]*>(.*?)$", actor.group(3), re.S)
-        author.headline = _text(lines[-1]) if lines else ""
+        # The headline is the short grey line right under the name, inside the post header; never
+        # the post text (which comes later and is long).
+        after = page[actor.end(): actor.end() + 2500]
+        after = after.split("main-feed-activity-card__commentary")[0].split("attributed-text-segment-list")[0]
+        line = re.search(r'<p class="[^"]*text-color-text-low-emphasis[^"]*"[^>]*>(.*?)</p>', after, re.S)
+        headline = _text(line.group(1)) if line else ""
+        author.headline = headline if len(headline) <= 220 else ""
 
     comments = []
     for chunk in re.split(r'<section class="comment', page)[1:]:
