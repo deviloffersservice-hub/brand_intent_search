@@ -44,6 +44,30 @@ It's free: no LinkedIn login, no paid APIs, and it runs on GitHub Actions in a p
 
 All rules are plain regular expressions in `brand_intent/intent.py`, so they're easy to tune.
 
+## What to expect
+
+These are measured on GitHub, October 2026:
+
+- **LinkedIn jobs:** the first runs took in the last 14 days of postings, about 320 brands; about 2 in 3
+  influencer-marketing job ads are from agencies or recruiters and are skipped. After that, each run adds
+  only newly posted jobs: a handful to a couple of dozen.
+- **LinkedIn posts:** the related-posts crawl reads up to 300 posts per run on the topic. Posts where a
+  brand itself asks for an agency or creators are rare, about 1 in 300. Most posts on the topic are
+  agencies and creators marketing themselves, and those are skipped.
+- **News:** an agency pitch or mandate from time to time (for example ICC's 2027 Women's Champions
+  Trophy marketing and PR mandate).
+- **Reddit:** Reddit refuses GitHub's machines, and threads without a date are skipped. Expect little
+  from it.
+- **Agencies and creators:** these come from the comments on the brand posts above, so they're few.
+  LinkedIn hides most commenters' headlines when you're logged out, so they're judged mostly by what
+  they write.
+
+Each run aims for `TARGET_BRANDS` (100) new genuine brands and **never pads**. The run log says how many
+it found and how far short it was ("target 100, short by N"), plus a duplicate check of the sheet.
+
+LinkedIn only shows "More relevant posts" on posts about 3+ days old. The crawl reads those first,
+re-reads younger posts in a later run, and keeps its unread queue between runs in the Actions cache.
+
 ## Run it
 
 - **Automatic:** `.github/workflows/brand-intent.yml` runs every 3 hours (:17, with :47 as a backup when GitHub drops the first).
