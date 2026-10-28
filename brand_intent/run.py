@@ -26,6 +26,11 @@ from .sheets import fmt_date, fmt_time
 
 log = logging.getLogger("brand_intent")
 
+SIGNAL_ASK = "Direct ask"
+SIGNAL_INFLUENCER_JOB = "Hiring for influencer marketing"
+SIGNAL_CAMPAIGN = "Running influencer campaign"
+SIGNAL_MARKETING_JOB = "Hiring for marketing"
+
 JOB_TITLE_RE = re.compile(r"influencer|creator|ugc|\bkol\b|brand partnership|talent partnership|"
                           r"linkedin (?:marketing|content|creator|brand|ghost ?writ|influencer)", re.I)
 
@@ -110,8 +115,11 @@ def recent(dt: datetime | None, now: datetime) -> bool:
 
 
 # --- LinkedIn jobs ------------------------------------------------------------------------------
-def collect_jobs(fetcher: Fetcher, out: Collector, now: datetime):
-    for kw in queries.JOB_KEYWORDS:
+def collect_jobs(fetcher: Fetcher, out: Collector, now: datetime, marketing: bool = False):
+    """Influencer/creator job ads (marketing=False), or, to fill up the target, any marketing job ad."""
+    keywords = queries.MARKETING_JOB_KEYWORDS if marketing else queries.JOB_KEYWORDS
+    title_re = intent.MARKETING_JOB_TITLE if marketing else JOB_TITLE_RE
+    for kw in keywords:
         for loc in queries.JOB_LOCATIONS:
             for page in range(config.JOB_PAGES_PER_QUERY):
                 if len(out.brands) >= config.TARGET_BRANDS:
@@ -122,7 +130,7 @@ def collect_jobs(fetcher: Fetcher, out: Collector, now: datetime):
                     log.info("jobs %r in %s: %s", kw, loc, e)
                     break
                 for job in jobs:
-                    if not JOB_TITLE_RE.search(job.title) or not recent(job.posted, now):
+                    if not title_re.search(job.title) or not recent(job.posted, now):
                         continue
                     slug_words = job.company_url.rsplit("/", 1)[-1].replace("-", " ")
                     if job.company.lower() == "linkedin" or intent.looks_like_agency(job.company, slug=slug_words):
@@ -132,8 +140,11 @@ def collect_jobs(fetcher: Fetcher, out: Collector, now: datetime):
                     if not mkt or out.company_listed(job.company, job.company_url):
                         continue
                     out.job_companies.append(company_keys(job.company, job.company_url))
+                    why = (f"Hiring a {job.title} in {job.location} (job posted {fmt_date(job.posted)}): "
+                           + ("investing in marketing." if marketing else "building influencer/creator marketing."))
                     out.add_brand({"Brand / Company": job.company, "Company LinkedIn": job.company_url,
-                                   "Looking For": "Hiring: " + job.title, "Market": mkt,
+                                   "Signal": SIGNAL_MARKETING_JOB if marketing else SIGNAL_INFLUENCER_JOB,
+                                   "Why Added": why, "Looking For": "Hiring: " + job.title, "Market": mkt,
                                    "Source": f"LinkedIn job ({job.location})", "Post / Job URL": job.url,
                                    "Posted On": fmt_date(job.posted), "Platforms Mentioned": "",
                                    "Matched Text": job.title})
@@ -151,6 +162,17 @@ def handle_post(fetcher: Fetcher, url: str, out: Collector, now: datetime, found
         return post
     looking = intent.wants(post.text)
     if not looking:
+        campaign = intent.campaign_signal(post.text) if a.is_company else ""
+        if campaign and not intent.looks_like_agency(a.name) and (mkt := intent.market(a.country, post.text)):
+            out.add_brand({"Brand / Company": a.name, "Signal": SIGNAL_CAMPAIGN,
+                           "Why Added": f"{campaign}: the brand's own LinkedIn post on {fmt_date(post.published)} "
+                                        f"says \"{intent.CAMPAIGN.search(post.text).group(0)}\".",
+                           "Company LinkedIn": a.url, "Posted By": a.name, "Poster Profile": a.url,
+                           "Looking For": campaign, "Platforms Mentioned": ", ".join(intent.platforms(post.text)),
+                           "Market": mkt, "Source": f"LinkedIn post ({found_by})", "Post / Job URL": post.url,
+                           "Posted On": fmt_date(post.published),
+                           "Matched Text": intent.CAMPAIGN.search(post.text).group(0), "Post Text": post.text[:1500]})
+            return post
         out.skipped["post isn't an ask"] += 1
         return post
     if intent.looks_like_agency(a.name, a.headline):
@@ -178,7 +200,10 @@ def handle_post(fetcher: Fetcher, url: str, out: Collector, now: datetime, found
                               "Page Type": "Company page" if p.is_company else "Person",
                               "Country": country_name(p.country), "Found Via": "Comment on brand post",
                               "Comment / Post": c.text[:500], "Brand": brand or a.name, "Brand Post URL": post.url})
-    out.add_brand({"Brand / Company": brand, "Company LinkedIn": a.url if a.is_company else "",
+    out.add_brand({"Brand / Company": brand, "Signal": SIGNAL_ASK,
+                   "Why Added": f"Posted on LinkedIn on {fmt_date(post.published)} asking for "
+                                f"{', '.join(looking).lower()}: \"{intent.evidence(post.text)}\".",
+                   "Company LinkedIn": a.url if a.is_company else "",
                    "Posted By": a.name, "Poster Profile": a.url, "Poster Headline": a.headline,
                    "Looking For": ", ".join(looking), "Platforms Mentioned": ", ".join(intent.platforms(post.text)),
                    "Market": mkt, "Source": f"LinkedIn post ({found_by})", "Post / Job URL": post.url,
@@ -216,7 +241,10 @@ def handle_reddit(reddit: Reddit, hit, out: Collector, now: datetime):
                               "Page Type": "Reddit user", "Found Via": "Comment on Reddit post",
                               "Comment / Post": body[:500], "Brand": f"u/{t.author}" if t.author else "",
                               "Brand Post URL": t.url})
-    out.add_brand({"Brand / Company": "", "Posted By": f"u/{t.author}" if t.author else "",
+    out.add_brand({"Brand / Company": "", "Signal": SIGNAL_ASK,
+                   "Why Added": f"Asked on Reddit r/{t.subreddit} on {fmt_date(t.published)} for "
+                                f"{', '.join(looking).lower()}: \"{intent.evidence(blob)}\".",
+                   "Posted By": f"u/{t.author}" if t.author else "",
                    "Poster Profile": f"https://www.reddit.com/user/{t.author}" if t.author else "",
                    "Looking For": ", ".join(looking), "Platforms Mentioned": ", ".join(intent.platforms(blob)),
                    "Market": mkt, "Source": f"Reddit r/{t.subreddit}" + ("" if t.full else " (search snippet)"),
@@ -230,8 +258,9 @@ def handle_news(hit, out: Collector, now: datetime):
         out.skipped["news older than 14 days or undated"] += 1
         return
     looking = intent.news_wants(hit.title, hit.snippet)
+    campaign = "" if looking else intent.campaign_signal(f"{hit.title}. {hit.snippet}")
     mkt = intent.market("", f"{hit.title}. {hit.snippet}")
-    if not looking or not mkt:
+    if not (looking or campaign) or not mkt:
         out.skipped["news not an ask / not India-US"] += 1
         return
     brand = intent.brand_from_title(hit.title)
@@ -243,9 +272,15 @@ def handle_news(hit, out: Collector, now: datetime):
         return
     if brand:
         out.news_brands.add(brand.lower())
-    out.add_brand({"Brand / Company": brand, "Looking For": ", ".join(looking),
+    source = f"News ({hit.source})" if hit.source else "News"
+    if looking:
+        signal, why = SIGNAL_ASK, f"{source} on {fmt_date(hit.published)}: \"{hit.title}\"."
+    else:
+        signal, why = SIGNAL_CAMPAIGN, f"{campaign} ({source}, {fmt_date(hit.published)}): \"{hit.title}\"."
+    out.add_brand({"Brand / Company": brand, "Signal": signal, "Why Added": why,
+                   "Looking For": ", ".join(looking) or campaign,
                    "Platforms Mentioned": ", ".join(intent.platforms(hit.snippet)), "Market": mkt,
-                   "Source": f"News ({hit.source})" if hit.source else "News", "Post / Job URL": hit.url,
+                   "Source": source, "Post / Job URL": hit.url,
                    "Posted On": fmt_date(hit.published), "Matched Text": hit.title,
                    "Post Text": hit.snippet[:1500]})
 
@@ -348,6 +383,7 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
     # Topical seeds and news answer most often, so they go first; exact-ask phrases rarely do.
     plan = ([("seed", q) for q in queries.rotation(queries.LINKEDIN_SEEDS, 8, slot)] +
             [("news", q) for q in queries.rotation(queries.NEWS, 6, slot)] +
+            [("news", q) for q in queries.rotation(queries.CAMPAIGN_NEWS, 4, slot)] +
             [("reddit", q) for q in queries.rotation(queries.REDDIT, 4, slot)] +
             [("linkedin", q) for q in queries.rotation(queries.LINKEDIN_POSTS, 8, slot)])
     for kind, q in plan:
@@ -409,6 +445,31 @@ def _safely(fn, *args):
         return None
 
 
+def explain_old_row(r: dict) -> tuple[str, str]:
+    """(Signal, Why Added) for a brand row written before those columns existed."""
+    src, when, what = r.get("Source", ""), r.get("Posted On", ""), r.get("Looking For", "")
+    if src.startswith("LinkedIn job"):
+        place = src[src.find("(") + 1:-1] if "(" in src else ""
+        return SIGNAL_INFLUENCER_JOB, (f"Hiring a {what.removeprefix('Hiring: ')}{' in ' + place if place else ''} "
+                                       f"(job posted {when}): building influencer/creator marketing.")
+    if src.startswith("News"):
+        return SIGNAL_ASK, f"{src} on {when}: \"{r.get('Matched Text', '')}\"."
+    if src.startswith("Reddit"):
+        return SIGNAL_ASK, f"Asked on {src} on {when} for {what.lower()}: \"{r.get('Matched Text', '')}\"."
+    return SIGNAL_ASK, f"Posted on LinkedIn on {when} asking for {what.lower()}: \"{r.get('Matched Text', '')}\"."
+
+
+def backfill(tab, rows: list[dict]):
+    updates = []
+    for r in rows:
+        if not r.get("Signal") and r.get("Post / Job URL"):
+            signal, why = explain_old_row(r)
+            updates += [(r["_row"], "Signal", signal), (r["_row"], "Why Added", why)]
+    if updates:
+        tab.set_cells(updates)
+        log.info("filled Signal / Why Added for %d earlier brand rows", len(updates) // 2)
+
+
 def sheet_check(brands: list[dict], agencies: list[dict], creators: list[dict]):
     """Log the sheet's size and any duplicates already in it (should always be 0)."""
     keys = Counter(url_key(r.get("Post / Job URL", "")) for r in brands if r.get("Post / Job URL"))
@@ -431,22 +492,26 @@ def run(dry_run: bool) -> int:
         book = Book()
         brands, agencies, creators = book.brands.rows(), book.agencies.rows(), book.creators.rows()
         sheet_check(brands, agencies, creators)
+        _safely(backfill, book.brands, brands)
         out = Collector(brands, agencies, creators)
     fetcher, searcher, reddit = Fetcher(), Searcher(), Reddit()
     slot = int(time.time() // (3 * 3600))
     try:
         # Brands that say so in a post first; job listings fill up the rest of the target.
         search_and_read(fetcher, searcher, reddit, out, now, slot, save_state=not dry_run)
-        try:
-            collect_jobs(fetcher, out, now)
-        except Blocked as e:
-            log.warning("LinkedIn refused job searches (%s)", e)
+        for marketing in (False, True):  # influencer/creator job ads, then marketing job ads to fill up
+            try:
+                collect_jobs(fetcher, out, now, marketing=marketing)
+            except Blocked as e:
+                log.warning("LinkedIn refused job searches (%s)", e)
+                break
     finally:  # whatever happened, keep what was found
         log.info("new: %d brands (target %d%s), %d agencies, %d creators; skipped: %s", len(out.brands),
                  config.TARGET_BRANDS, "" if len(out.brands) >= config.TARGET_BRANDS
                  else f", short by {config.TARGET_BRANDS - len(out.brands)}",
                  len(out.agencies), len(out.creators), dict(out.skipped.most_common()))
         log.info("brands by source: %s", dict(Counter(r["Source"].split(" (")[0] for r in out.brands)))
+        log.info("brands by signal: %s", dict(Counter(r.get("Signal", "") for r in out.brands)))
         for r in out.brands:
             if not r["Source"].startswith("LinkedIn job"):
                 log.info("  + %s | %s | %s | %s", r.get("Brand / Company") or r.get("Posted By", ""),

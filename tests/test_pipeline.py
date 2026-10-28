@@ -389,3 +389,56 @@ def test_young_posts_are_crawled_last_and_reread_when_old_enough(tmp_path, monke
     old = run.Crawl(NOW)
     old.load(str(tmp_path / "old.json"))
     assert old.pop() == older
+
+
+def test_signal_and_why_on_every_kind_of_row():
+    out = run.Collector([], [], [])
+    # direct ask
+    post = brand_post(post_url("acme"))
+    run.handle_post(FakeFetcher(posts={post.url: post}), post.url, out, NOW, "search")
+    # brand company page announcing a creator campaign
+    camp = Post(url=post_url("nykaa", 4), author=Person("Nykaa", "https://www.linkedin.com/company/nykaa", "company", "in"),
+                published=NOW - timedelta(days=4), text="We partnered with 200 creators for our festive sale!")
+    run.handle_post(FakeFetcher(posts={camp.url: camp}), camp.url, out, NOW, "related posts")
+    # campaign news
+    run.handle_news(Hit("https://n/5", "Boat appoints Schbang as influencer marketing agency", "Mumbai", NOW, "afaqs"),
+                    out, NOW)
+    # influencer job and marketing job
+    jobs = {("influencer marketing", "India", 0): [Job("https://www.linkedin.com/jobs/view/11", "Influencer Marketing Manager",
+                                                       "Lenskart", "https://www.linkedin.com/company/lenskart", "Delhi, India", NOW)],
+            ("social media manager", "India", 0): [Job("https://www.linkedin.com/jobs/view/12", "Social Media Manager",
+                                                       "Sugar Cosmetics", "https://www.linkedin.com/company/sugar", "Mumbai, India", NOW),
+                                                   Job("https://www.linkedin.com/jobs/view/13", "Software Engineer",
+                                                       "Zepto", "https://www.linkedin.com/company/zepto", "Mumbai, India", NOW)]}
+    f = FakeFetcher(jobs=jobs)
+    run.collect_jobs(f, out, NOW)
+    run.collect_jobs(f, out, NOW, marketing=True)
+    got = {b["Brand / Company"]: (b["Signal"], b["Why Added"]) for b in out.brands}
+    assert got["Acme"][0] == "Direct ask" and "asking for influencer marketing agency" in got["Acme"][1]
+    assert got["Nykaa"][0] == "Running influencer campaign" and "partnered with 200 creators" in got["Nykaa"][1]
+    assert got["Boat"][0] == "Running influencer campaign" and "Appointed an agency" in got["Boat"][1]
+    assert got["Lenskart"][0] == "Hiring for influencer marketing"
+    assert got["Sugar Cosmetics"][0] == "Hiring for marketing" and "investing in marketing" in got["Sugar Cosmetics"][1]
+    assert "Zepto" not in got
+    assert all(b["Why Added"] for b in out.brands)
+
+
+def test_backfill_explains_old_rows():
+    class FakeTab:
+        def __init__(self):
+            self.updates = []
+
+        def set_cells(self, u):
+            self.updates += u
+    rows = [{"_row": 2, "Source": "LinkedIn job (Mumbai, India)", "Looking For": "Hiring: Influencer Marketing Manager",
+             "Posted On": "2026-10-27", "Post / Job URL": "u1", "Signal": ""},
+            {"_row": 3, "Source": "News (afaqs)", "Matched Text": "ICC invites pitches", "Posted On": "2026-10-22",
+             "Post / Job URL": "u2", "Signal": ""},
+            {"_row": 4, "Signal": "Direct ask", "Post / Job URL": "u3"}]
+    t = FakeTab()
+    run.backfill(t, rows)
+    assert (2, "Signal", "Hiring for influencer marketing") in t.updates
+    assert (2, "Why Added", "Hiring a Influencer Marketing Manager in Mumbai, India (job posted 2026-10-27): "
+                            "building influencer/creator marketing.") in t.updates
+    assert any(r == 3 and h == "Why Added" and "ICC invites pitches" in v for r, h, v in t.updates)
+    assert not any(r == 4 for r, _, _ in t.updates)

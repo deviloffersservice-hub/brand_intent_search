@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 
 from . import config
 
-BRAND_HEADERS = ["Added At (IST)", "Brand / Company", "Company LinkedIn", "Posted By", "Poster Profile",
+BRAND_HEADERS = ["Added At (IST)", "Brand / Company", "Signal", "Why Added", "Company LinkedIn", "Posted By", "Poster Profile",
                  "Poster Headline", "Looking For", "Platforms Mentioned", "Market", "Source", "Post / Job URL",
                  "Posted On", "Matched Text", "Post Text", "Agencies in Comments", "Creators in Comments"]
 PEOPLE_HEADERS = ["Added At (IST)", "Name", "Profile", "Headline", "Page Type", "Country", "Found Via",
@@ -54,8 +54,17 @@ class Tab:
         self.headers = current
 
     def rows(self) -> list[dict]:
+        """Every non-empty row as {header: value}, plus "_row" (its sheet row number)."""
         values = self.ws.get_all_values()
-        return [{h: (r[i] if i < len(r) else "") for i, h in enumerate(self.headers)} for r in values[1:] if any(r)]
+        return [{**{h: (r[i] if i < len(r) else "") for i, h in enumerate(self.headers)}, "_row": n}
+                for n, r in enumerate(values[1:], start=2) if any(r)]
+
+    def set_cells(self, updates: list[tuple[int, str, str]]):
+        """(sheet row, header, value) cell writes, sent in batches."""
+        from gspread.utils import rowcol_to_a1
+        data = [{"range": rowcol_to_a1(row, self.headers.index(h) + 1), "values": [[v]]} for row, h, v in updates]
+        for i in range(0, len(data), 500):
+            self.ws.batch_update(data[i:i + 500], value_input_option="RAW")
 
     def append(self, records: list[dict]):
         if records:

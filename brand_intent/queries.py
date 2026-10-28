@@ -88,6 +88,31 @@ JOB_KEYWORDS = [
 ]
 JOB_LOCATIONS = ["India", "United States"]
 
+# Broader signal, used last to fill a run up to its target: companies hiring for marketing roles.
+MARKETING_JOB_KEYWORDS = [
+    "social media manager",
+    "social media marketing",
+    "digital marketing manager",
+    "brand manager",
+    "content marketing manager",
+    "performance marketing",
+    "growth marketing",
+    "head of marketing",
+    "community manager",
+]
+
+# Brands already doing influencer marketing: campaign launches and agency appointments in the news.
+CAMPAIGN_NEWS = [
+    "launches influencer campaign",
+    "creator-led campaign brand",
+    "appoints influencer marketing agency",
+    "bags influencer mandate",
+    "influencer campaign India brand",
+    "partners with creators campaign",
+    "UGC campaign brand launch",
+    "influencer marketing mandate win",
+]
+
 
 def rotation(items: list[str], k: int, slot: int) -> list[str]:
     """k items starting at a slot-dependent offset, wrapping around."""

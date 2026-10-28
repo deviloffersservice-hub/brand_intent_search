@@ -206,7 +206,9 @@ PITCH = re.compile(r"(?:calls? for|invites?|issues?|opens?|kicks? off|initiates?
                    r"(?:seeks?|seeking|looking for|on the hunt for|scouting for|hunts? for)"
                    r"[^.!?\n]{0,40}(?:agenc(?:y|ies)|partners?)\b", re.I)
 BRAND_BEFORE = re.compile(r"^(.{2,60}?)\s+(?:(?:is|are)\s+)?(?:calls?|invites?|issues?|opens?|kicks? off|initiates?|"
-                          r"floats?|announces?|seeks?|seeking|looking|on the hunt|scouting|hunts?)\b", re.I)
+                          r"floats?|announces?|seeks?|seeking|looking|on the hunt|scouting|hunts?|launch(?:es|ed)?|"
+                          r"rolls? out|unveils?|debuts?|introduces?|appoints?|ropes? in|onboards?|hires?|names?|"
+                          r"picks?|selects?|awards?|partners?|teams? up|collaborates?)\b", re.I)
 NOT_A_BRAND = re.compile(r"^(?:brands?|why|how|what|when|these|this|the|a|an|top|\d+|marketers?|companies|startups?|"
                          r"agencies|ceos?|cmos?)\b", re.I)
 
@@ -229,3 +231,29 @@ def brand_from_title(title: str) -> str:
     if NOT_A_BRAND.search(brand) or len(brand.split()) > 6:
         return ""
     return brand
+
+
+# --- brands already doing influencer marketing (campaigns, agency appointments) ------------------
+CAMPAIGN = re.compile(
+    r"(?:launch(?:es|ed|ing)?|roll(?:s|ed)? out|unveil(?:s|ed)?|kick(?:s|ed)? off|debut(?:s|ed)?|introduc(?:es|ed))"
+    r"[^.!?\n]{0,50}(?:influencer|creator|ugc)[- ](?:led |driven |first )?(?:campaign|program(?:me)?|series|collab)|"
+    r"(?:influencer|creator)[- ](?:led|driven|first) campaign|"
+    r"(?:appoints?|appointed|ropes? in|roped in|onboards?|onboarded|hires?|hired|names?|picks?|selects?|awards?)"
+    r"[^.!?\n]{0,50}(?:influencer|creator|social media|digital)[^.!?\n]{0,20}(?:agency|mandate|partner)|"
+    r"(?:partners?|partnered|teams? up|teamed up|collaborates?|collaborated) with [^.!?\n]{0,30}"
+    r"(?:\d+\+? )?(?:influencers|creators|content creators)\b", re.I)
+
+
+def campaign_signal(text: str) -> str:
+    """'Running influencer campaign' / 'Appointed an agency' if the text says the brand is doing
+    influencer or creator marketing right now; '' otherwise."""
+    m = CAMPAIGN.search(text or "")
+    if not m:
+        return ""
+    return "Appointed an agency" if re.search(r"agency|mandate", m.group(0), re.I) else "Running influencer campaign"
+
+
+# --- marketing hiring (a broader signal: the company is investing in marketing) ------------------
+MARKETING_JOB_TITLE = re.compile(r"social media|digital marketing|brand manager|brand marketing|content marketing|"
+                                 r"performance marketing|growth marketing|marketing manager|head of marketing|"
+                                 r"marketing lead|cmo|chief marketing|community manager|partnerships? manager", re.I)

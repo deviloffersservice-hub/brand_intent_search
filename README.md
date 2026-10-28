@@ -19,6 +19,15 @@ Results go to three tabs in
 | `github script for agencies` | agency: from a comment on a brand post, a Reddit reply, or an agency's own post asking for creators |
 | `github script for creators` | creator who replied to a brand post |
 
+Every brand row has a **Signal** and a **Why Added** sentence. Each run fills its 100 in this order:
+
+| Signal | What it means | Example of "Why Added" |
+|---|---|---|
+| Direct ask | The brand posted (LinkedIn, Reddit, news) that it wants an agency or creators | Posted on LinkedIn on 2026-10-27 asking for influencer marketing agency: "…" |
+| Hiring for influencer marketing | Job ad for an influencer/creator/LinkedIn-marketing role | Hiring a Influencer Marketing Manager in Mumbai (job posted 2026-10-27): building influencer/creator marketing. |
+| Running influencer campaign | The brand just launched a creator campaign or appointed an influencer agency (its own LinkedIn post, or the news) | Appointed an agency (News (afaqs), 2026-10-27): "Boat appoints … as influencer marketing agency". |
+| Hiring for marketing | Job ad for a social media, digital, brand, content, performance or growth marketing role (a broader signal, used last to fill up to 100) | Hiring a Social Media Manager in Delhi (job posted 2026-10-26): investing in marketing. |
+
 There are no duplicates. Brands are deduplicated by post or job link, with one job row per company.
 Agencies and creators are deduplicated by profile.
 
