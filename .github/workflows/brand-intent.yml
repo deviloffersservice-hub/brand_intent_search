@@ -40,7 +40,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow brand-intent.yml --status success --limit 1 \
+          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow brand-intent.yml --event schedule --status success --limit 1 \
                  --json createdAt --jq '.[0].createdAt // empty')
           if [ -n "$last" ] && [ $(( $(date +%s) - $(date -d "$last" +%s) )) -lt 5400 ]; then
             echo "last successful run at $last; skipping"; echo "skip=true" >> "$GITHUB_OUTPUT"

@@ -21,8 +21,9 @@ MAX_AGE_DAYS = _int("MAX_AGE_DAYS", 14)  # posts, jobs and news older than this 
 # Per-run budgets (a run every 3 hours; keep each one short and gentle).
 SEARCHES_PER_RUN = _int("SEARCHES_PER_RUN", 30)
 SEARCH_GAP_SECONDS = _float("SEARCH_GAP_SECONDS", 20)  # engines rate-limit per time window
-MAX_POST_PAGES = _int("MAX_POST_PAGES", 150)  # LinkedIn post pages fetched per run
-JOB_PAGES_PER_QUERY = _int("JOB_PAGES_PER_QUERY", 2)  # 10 jobs per page
+MAX_POST_PAGES = _int("MAX_POST_PAGES", 300)  # LinkedIn post pages read per run (~2 s each)
+JOB_PAGES_PER_QUERY = _int("JOB_PAGES_PER_QUERY", 10)  # 10 jobs per page; stops early at the target
+TARGET_BRANDS = _int("TARGET_BRANDS", 100)  # new brands per run; a run stops looking once it has these
 MAX_CONSECUTIVE_BLOCKS = _int("MAX_CONSECUTIVE_BLOCKS", 3)
 REQUEST_DELAY_MIN = _float("REQUEST_DELAY_MIN", 1.0)
 REQUEST_DELAY_MAX = _float("REQUEST_DELAY_MAX", 2.5)

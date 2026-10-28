@@ -29,6 +29,23 @@ LINKEDIN_POSTS = [
     '"influencer marketing agency" India "looking for"',
 ]
 
+# Topical searches that return recent LinkedIn posts about influencer/creator marketing: starting
+# points for the related-posts crawl (search engines rarely answer the exact-ask phrases above).
+LINKEDIN_SEEDS = [
+    "influencer marketing",
+    "creator marketing",
+    "UGC creators brand",
+    "influencer campaign brand",
+    "LinkedIn creators",
+    "LinkedIn influencer marketing",
+    "brand collaboration influencers",
+    "influencer marketing India",
+    "D2C brand influencer",
+    "creator economy brands",
+    "B2B influencer marketing",
+    "looking for creators",
+]
+
 # Reddit threads where a brand or founder asks for an agency or creators.
 REDDIT = [
     '"influencer marketing agency" recommend',
@@ -59,7 +76,15 @@ JOB_KEYWORDS = [
     "creator partnerships",
     "creator marketing",
     "influencer marketing manager",
+    "influencer relations",
+    "brand partnerships influencer",
+    "UGC creator",
+    "KOL marketing",
+    "affiliate and influencer",
+    "social media influencer",
+    "talent partnerships creator",
     "LinkedIn marketing",
+    "LinkedIn content",
 ]
 JOB_LOCATIONS = ["India", "United States"]
 

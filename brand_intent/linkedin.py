@@ -95,6 +95,7 @@ class Post:
     published: datetime | None
     text: str
     comments: list[Comment] = field(default_factory=list)
+    related: list = field(default_factory=list)  # Related cards; filled by parse_post
 
 
 def parse_post(page: str, url: str) -> Post:
@@ -139,7 +140,8 @@ def parse_post(page: str, url: str) -> Post:
             re.search(r'class="[^"]*comment__body[^"]*"[^>]*>(.*)', chunk, re.S)
         person = person_from_link(link.group(1), _text(link.group(2)), _text(headline.group(1)) if headline else "")
         comments.append(Comment(person, _text(body.group(1))[:1000] if body else ""))
-    return Post(url=canonical_post_url(url), author=author, published=published, text=text, comments=comments)
+    return Post(url=canonical_post_url(url), author=author, published=published, text=text, comments=comments,
+                related=parse_related(page))
 
 
 @dataclass
@@ -213,3 +215,32 @@ class Fetcher:
         url = ("https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?"
                f"keywords={quote_plus(keywords)}&location={quote_plus(location)}&f_TPR=r{seconds}&start={start}")
         return parse_jobs(self.get(url))
+
+
+@dataclass
+class Related:
+    """A card in a post page's "More Relevant Posts" section: enough to judge it without a fetch."""
+    url: str
+    author: Person
+    text: str
+    published: datetime | None
+
+
+def parse_related(page: str) -> list[Related]:
+    start = page.find("related-posts")
+    if start < 0:
+        return []
+    out = []
+    for chunk in re.split(r'<li class="mb-1\.5">', page[start:])[1:]:
+        post = POST_URL_RE.search(chunk)
+        if not post:
+            continue
+        url = canonical_post_url(post.group(0))
+        urn = re.search(r'data-activity-urn="urn:li:activity:(\d+)"', chunk)
+        actor = ACTOR_RE.search(chunk)
+        name = re.search(r'aria-label="Post by ([^"]+)"', chunk)
+        body = re.search(r'attributed-text-segment-list__content[^>]*>(.*?)</p>', chunk, re.S)
+        author = person_from_link(actor.group(0) if actor else "", htmllib.unescape(name.group(1)) if name else "")
+        out.append(Related(url=url, author=author, text=_text(body.group(1)) if body else "",
+                           published=activity_time(urn.group(1) if urn else activity_id_from_url(url))))
+    return out
