@@ -269,7 +269,7 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
     log.info("searches: %d asked, %d answered; %d LinkedIn posts to start from", searcher.asked, searcher.answered,
              len(crawl.heap))
 
-    pages = 0
+    pages = with_related = 0
     while len(out.brands) < config.TARGET_BRANDS and pages < config.MAX_POST_PAGES and (url := crawl.pop()):
         if url in out.brand_urls:
             continue
@@ -280,10 +280,11 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
             log.warning("LinkedIn stopped serving posts (%s)", e)
             break
         if post:
+            with_related += bool(post.related)
             crawl.add_related(post)
         if pages % 50 == 0:
             log.info("crawl: %d posts read, %d brands so far, %d queued", pages, len(out.brands), len(crawl.heap))
-    log.info("crawl: %d LinkedIn posts read", pages)
+    log.info("crawl: %d LinkedIn posts read, %d of them showed related posts", pages, with_related)
 
 
 def _safely(fn, *args):
