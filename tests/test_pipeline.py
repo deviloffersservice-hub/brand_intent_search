@@ -342,3 +342,12 @@ def test_comment_counts_include_people_already_listed():
                                          "Founder, Spark Influencer Agency"), "We'd love to help")])
     run.handle_post(FakeFetcher(posts={post.url: post}), post.url, out, NOW, "search")
     assert out.brands[0]["Agencies in Comments"] == 1 and out.agencies == []
+
+
+def test_sheet_check_reports_duplicates(caplog):
+    import logging
+    caplog.set_level(logging.INFO)
+    a = aid(1)
+    run.sheet_check([{"Post / Job URL": f"https://www.linkedin.com/posts/x_y-activity-{a}-ab"},
+                     {"Post / Job URL": f"https://in.linkedin.com/posts/x_y-activity-{a}-cd/"}], [], [])
+    assert "duplicate brand links: 1" in caplog.text

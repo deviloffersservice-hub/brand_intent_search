@@ -347,6 +347,17 @@ def _safely(fn, *args):
         return None
 
 
+def sheet_check(brands: list[dict], agencies: list[dict], creators: list[dict]):
+    """Log the sheet's size and any duplicates already in it (should always be 0)."""
+    keys = Counter(url_key(r.get("Post / Job URL", "")) for r in brands if r.get("Post / Job URL"))
+    people = Counter(r.get("Profile", "").lower().rstrip("/") for r in agencies + creators if r.get("Profile"))
+    dup_brands = {k: n for k, n in keys.items() if n > 1}
+    dup_people = {k: n for k, n in people.items() if n > 1}
+    log.info("sheet check: %d brands, %d agencies, %d creators; duplicate brand links: %d, duplicate people: %d%s",
+             len(brands), len(agencies), len(creators), len(dup_brands), len(dup_people),
+             f" e.g. {list(dup_brands.items())[:3] + list(dup_people.items())[:3]}" if dup_brands or dup_people else "")
+
+
 def run(dry_run: bool) -> int:
     started = time.time()
     now = datetime.now(timezone.utc)
@@ -356,7 +367,9 @@ def run(dry_run: bool) -> int:
     else:
         from .sheets import Book
         book = Book()
-        out = Collector(book.brands.rows(), book.agencies.rows(), book.creators.rows())
+        brands, agencies, creators = book.brands.rows(), book.agencies.rows(), book.creators.rows()
+        sheet_check(brands, agencies, creators)
+        out = Collector(brands, agencies, creators)
     fetcher, searcher, reddit = Fetcher(), Searcher(), Reddit()
     slot = int(time.time() // (3 * 3600))
     try:
@@ -372,6 +385,13 @@ def run(dry_run: bool) -> int:
                  else f", short by {config.TARGET_BRANDS - len(out.brands)}",
                  len(out.agencies), len(out.creators), dict(out.skipped.most_common()))
         log.info("brands by source: %s", dict(Counter(r["Source"].split(" (")[0] for r in out.brands)))
+        for r in out.brands:
+            if not r["Source"].startswith("LinkedIn job"):
+                log.info("  + %s | %s | %s | %s", r.get("Brand / Company") or r.get("Posted By", ""),
+                         r["Looking For"], r["Market"], r["Post / Job URL"])
+        for kind, rows in (("agency", out.agencies), ("creator", out.creators)):
+            for r in rows:
+                log.info("  + %s %s | %s | %s", kind, r["Name"], r.get("Headline", "")[:60], r["Profile"])
         if dry_run:
             for tab, rows in (("BRAND", out.brands), ("AGENCY", out.agencies), ("CREATOR", out.creators)):
                 for r in rows:
