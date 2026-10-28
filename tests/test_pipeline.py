@@ -365,3 +365,27 @@ def test_crawl_queue_survives_between_runs(tmp_path, monkeypatch):
     assert len(later.heap) == 2 and later.pop() == post_url("asker")
     assert later.origin[run.url_key(post_url("asker"))] == "search"
     run.Crawl(NOW).load(str(tmp_path / "missing.json"))  # no saved queue yet: fine
+
+
+def test_young_posts_are_crawled_last_and_reread_when_old_enough(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "STATE_FILE", str(tmp_path / "q.json"))
+    c = run.Crawl(NOW)
+    young, older, ask = post_url("young", 1), post_url("older", 5), post_url("ask", 0.5)
+    c.push(young, 2, "search")
+    c.push(older, 2, "search")
+    c.push(ask, 0)  # asks are read first whatever their age
+    assert [c.pop() for _ in range(3)] == [ask, older, young]
+    c.read_later(young)  # read at 1 day old: no related posts yet
+    c.read_later(older)  # already old enough: nothing to wait for
+    assert list(c.later) == [young]
+    c.save(config.STATE_FILE)
+    # three days later the young post is read again
+    later = run.Crawl(NOW + timedelta(days=3))
+    later.load(config.STATE_FILE)
+    assert later.pop() == young and later.origin[run.url_key(young)] == "related posts"
+    # an older save format (a plain list) still loads
+    import json
+    (tmp_path / "old.json").write_text(json.dumps([[1, older, "search"]]))
+    old = run.Crawl(NOW)
+    old.load(str(tmp_path / "old.json"))
+    assert old.pop() == older

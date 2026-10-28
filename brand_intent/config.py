@@ -30,5 +30,8 @@ REQUEST_DELAY_MAX = _float("REQUEST_DELAY_MAX", 2.5)
 
 STATE_FILE = os.environ.get("STATE_FILE", ".state/crawl_queue.json")  # kept between runs (Actions cache)
 QUEUE_KEEP = _int("QUEUE_KEEP", 3000)  # unread posts carried to the next run
+# LinkedIn adds "More relevant posts" to a post page only after a few days (seen: none at 0-2 days,
+# 10 at 3-4 days), so younger posts are crawled last and re-read once they are this old.
+RELATED_AFTER_DAYS = _int("RELATED_AFTER_DAYS", 3)
 
 IST = timezone(timedelta(hours=5, minutes=30))

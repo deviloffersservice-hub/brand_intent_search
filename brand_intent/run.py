@@ -256,21 +256,29 @@ TOPICAL = re.compile(r"influencer|creator|\bugc\b|\bkols?\b|agenc(?:y|ies)|brand
 
 
 class Crawl:
-    """LinkedIn post pages, best first: cards whose text already asks for an agency or creators,
-    then posts about influencer/creator marketing (for their related posts), then search seeds."""
+    """LinkedIn post pages, best first: cards whose text already asks for an agency or creators (0),
+    posts about influencer/creator marketing (1), search seeds (2), and posts too young to show
+    related posts yet (3: still read for their own text, and re-read later for their related posts)."""
 
     def __init__(self, now: datetime):
         self.now = now
         self.heap: list[tuple] = []
         self.queued: set[str] = set()
         self.origin: dict[str, str] = {}
+        self.later: dict[str, int] = {}  # url -> unix time it will be old enough to show related posts
         self.n = 0
+
+    def age_days(self, url: str) -> float | None:
+        aid = activity_id_from_url(url)
+        return (self.now - activity_time(aid)).total_seconds() / 86400 if aid else None
 
     def push(self, url: str, priority: int, origin: str = "related posts"):
         url = canonical_post_url(url)
         aid = activity_id_from_url(url)
         if url_key(url) in self.queued or (aid and not recent(activity_time(aid), self.now)):
             return  # old posts are skipped without fetching: the date is in the link
+        if priority >= 1 and (age := self.age_days(url)) is not None and age < config.RELATED_AFTER_DAYS:
+            priority = 3
         self.queued.add(url_key(url))
         self.origin[url_key(url)] = origin
         self.n += 1
@@ -281,22 +289,39 @@ class Crawl:
 
     # Some GitHub machines are served post pages without "More relevant posts", which would leave
     # the crawl with nothing to read; the unread queue is kept between runs so it never starts empty.
+    def read_later(self, post_url_: str):
+        """A post read before LinkedIn showed its related posts: read it again once it's old enough."""
+        aid = activity_id_from_url(post_url_)
+        if aid:
+            ready = activity_time(aid).timestamp() + config.RELATED_AFTER_DAYS * 86400
+            if ready > self.now.timestamp():
+                self.later[canonical_post_url(post_url_)] = int(ready)
+
     def load(self, path: str):
         try:
             with open(path) as f:
                 saved = json.load(f)
         except (OSError, ValueError):
             return
-        for priority, url, origin in saved:
+        if isinstance(saved, list):  # older format: just the queue
+            saved = {"queue": saved}
+        for priority, url, origin in saved.get("queue", []):
             self.push(url, int(priority), origin)
-        log.info("crawl: %d unread posts carried over from earlier runs", len(self.heap))
+        now = self.now.timestamp()
+        for url, ready in saved.get("later", []):
+            if ready <= now:
+                self.push(url, 1, "related posts")  # old enough now: read again for its related posts
+            elif recent(activity_time(activity_id_from_url(url)), self.now):
+                self.later[url] = ready
+        log.info("crawl: %d posts carried over from earlier runs (%d more waiting to be old enough)",
+                 len(self.heap), len(self.later))
 
     def save(self, path: str):
         keep = [[p, url, self.origin.get(url_key(url), "related posts")]
                 for p, _, _, url in sorted(self.heap)[: config.QUEUE_KEEP]]
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w") as f:
-            json.dump(keep, f)
+            json.dump({"queue": keep, "later": sorted(self.later.items())[: config.QUEUE_KEEP]}, f)
 
     def add_related(self, post):
         for r in post.related:
@@ -333,7 +358,8 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
             for hit in searcher.text(f"site:reddit.com {q}", timelimit="w"):
                 _safely(handle_reddit, reddit, hit, out, now)
         else:
-            for hit in searcher.text(f"site:linkedin.com/posts {q}", timelimit="w" if kind == "seed" else "m"):
+            # A month back, not a week: 3-14 day old posts show related posts; older ones are dropped.
+            for hit in searcher.text(f"site:linkedin.com/posts {q}", timelimit="m"):
                 if (m := POST_URL_RE.search(hit.url)):
                     crawl.push(m.group(0), 0 if intent.wants(f"{hit.title} {hit.snippet}") else 2, "search")
     log.info("searches: %d asked, %d answered; %d LinkedIn posts to start from", searcher.asked, searcher.answered,
@@ -352,6 +378,8 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
         if post:
             with_related += bool(post.related)
             crawl.add_related(post)
+            if not post.related:
+                crawl.read_later(url)
         if pages % 50 == 0:
             log.info("crawl: %d posts read, %d brands so far, %d queued", pages, len(out.brands), len(crawl.heap))
     log.info("crawl: %d LinkedIn posts read, %d of them showed related posts", pages, with_related)
