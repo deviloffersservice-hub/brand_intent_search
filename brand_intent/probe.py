@@ -31,12 +31,41 @@ VARIANTS = [
 ]
 
 
+def related_check():
+    """Why do some runs' seed posts show no related posts? Look at each seed page."""
+    import re
+    from datetime import datetime, timezone
+    from .linkedin import POST_URL_RE, activity_id_from_url, activity_time, canonical_post_url, parse_post
+    from .search import Searcher
+    s, f = Searcher(), Fetcher()
+    urls = []
+    for q in ["influencer marketing", "creator marketing", "LinkedIn creators", "marketing"]:
+        urls += [canonical_post_url(m.group(0)) for h in s.text(f"site:linkedin.com/posts {q}", timelimit="w")
+                 if (m := POST_URL_RE.search(h.url))]
+    now = datetime.now(timezone.utc)
+    for url in list(dict.fromkeys(urls))[:16]:
+        try:
+            html = f.get(url)
+        except Exception as e:
+            log.info("probe related %s: %s", url, e)
+            continue
+        p = parse_post(html, url)
+        aid = activity_id_from_url(url)
+        age = (now - activity_time(aid)).days if aid else None
+        others = len(set(POST_URL_RE.findall(html)) - {url})
+        marks = [m for m in ("related-posts", "More Relevant Posts", "more-from", "show-more-less", "authwall",
+                             "public_post_feed-actor-name") if m in html]
+        log.info("probe related | %s | kind=%s age=%sd len=%d related=%d other_post_links=%d marks=%s",
+                 url.split("/posts/")[1][:50], p.author.kind, age, len(html), len(p.related), others, marks)
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    related_check()
     from ddgs import DDGS
     for noisy in ("primp", "ddgs", "httpx"):
         logging.getLogger(noisy).setLevel(logging.ERROR)
-    for kind, q, tl in VARIANTS:
+    for kind, q, tl in VARIANTS[:0]:  # search-style checks done (see git history); skipped now
         for backend in (["auto", "duckduckgo", "brave", "yahoo", "mojeek"] if kind == "text" else ["auto"]):
             try:
                 if kind == "text":
