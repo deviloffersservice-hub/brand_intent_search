@@ -40,7 +40,11 @@ IN_HOUSE_CREATOR = re.compile(r"(?:content|video|ugc|reels?|social(?: media)?(?:
 INFLUENCER_ROLE = re.compile(r"influencer|\bkol\b|creator (?:partnerships?|marketing|relations|programs?|community|"
                              r"success|activation|management|campaigns?|operations|strategy)|creators? (?:&|and) "
                              r"(?:influencer|affiliate)|head of creators|director, creators|talent partnership|"
-                             r"brand partnership|linkedin", re.I)
+                             r"brand partnership|linkedin|"
+                             # managing creators: "Creator & Community", "Creator Commerce", "Social & Creators Lead"
+                             r"(?<!content )(?<!video )(?<!reel )(?<!ugc )(?<!camera )(?<!sports )\bcreators? "
+                             r"(?:&|and|commerce|live)(?=\s|$)(?! (?:host|editor|presenter|producer))|"
+                             r"\b(?:social|community|commerce),? (?:&|and)? ?creators?\b(?! & host)", re.I)
 
 
 def job_signal(title: str, marketing_search: bool) -> str:

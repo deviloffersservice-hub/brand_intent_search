@@ -470,3 +470,13 @@ def test_new_rows_get_priority_and_why_kept():
                    "Source": "LinkedIn job (Mumbai, India)", "Market": "India", "Post / Job URL": "https://www.linkedin.com/jobs/view/1"})
     r = out.brands[0]
     assert r["Priority"] == 3 and "Nykaa is a brand" in r["Why Kept"] and "Mumbai, India" in r["Why Kept"]
+
+
+def test_creator_management_roles_stay_influencer_hiring():
+    i, m = run.SIGNAL_INFLUENCER_JOB, run.SIGNAL_MARKETING_JOB
+    for t in ("Creator & Social Commerce Manager", "Marketing Manager, Creator & Community", "Social & Creators Lead",
+              "TikTok Shop Creator LIVE Manager", "Manager, Integrated Marketing - Social, Creator & Content, OXO"):
+        assert run.job_signal(t, False) == i, t
+    for t in ("On-Camera Video Creator & Editor", "Content Creator & Social Media Executive", "Reel Creator Fresher",
+              "Social Sports Creator & Host, NBC Bay Area"):
+        assert run.job_signal(t, False) == m, t
