@@ -478,8 +478,10 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
             for hit in searcher.text(f"site:reddit.com {q}", timelimit="w"):
                 _safely(handle_reddit, reddit, hit, out, now)
         else:
-            # A month back, not a week: 3-14 day old posts show related posts; older ones are dropped.
-            for hit in searcher.text(f"site:linkedin.com/posts {q}", timelimit="m"):
+            # Topical seeds: a month back (3-14 day old posts show related posts). Exact-ask phrases ("urgent
+            # requirement", "looking for vendors"...) only get answers with no date filter at all (measured on
+            # GitHub, 29 Oct); posts over 14 days old are dropped by the date in their link before any fetch.
+            for hit in searcher.text(f"site:linkedin.com/posts {q}", timelimit="m" if kind == "seed" else None):
                 if (m := POST_URL_RE.search(hit.url)):
                     crawl.push(m.group(0), 0 if intent.wants(f"{hit.title} {hit.snippet}") else 2, "search")
     log.info("searches: %d asked, %d answered; %d LinkedIn posts to start from", searcher.asked, searcher.answered,

@@ -483,3 +483,22 @@ def test_creator_management_roles_stay_influencer_hiring():
     for t in ("On-Camera Video Creator & Editor", "Content Creator & Social Media Executive", "Reel Creator Fresher",
               "Social Sports Creator & Host, NBC Bay Area"):
         assert run.job_signal(t, False) == m, t
+
+
+def test_exact_ask_searches_use_no_date_filter(monkeypatch):
+    from brand_intent import queries
+    monkeypatch.setattr(queries, "LINKEDIN_SEEDS", ["seed q"])
+    monkeypatch.setattr(queries, "VENDOR_ASKS", ['"urgent requirement" linkedin creators'])
+    monkeypatch.setattr(queries, "LINKEDIN_POSTS", [])
+    monkeypatch.setattr(queries, "REDDIT", [])
+    monkeypatch.setattr(queries, "NEWS", [])
+    monkeypatch.setattr(queries, "CAMPAIGN_NEWS", [])
+    seen = {}
+
+    class S(FakeSearcher):
+        def text(self, q, timelimit="w", max_results=25):
+            seen[q] = timelimit
+            return []
+    run.search_and_read(FakeFetcher(), S(), FakeReddit(), run.Collector([], [], []), NOW, 0)
+    assert seen == {"site:linkedin.com/posts seed q": "m",
+                    'site:linkedin.com/posts "urgent requirement" linkedin creators': None}
