@@ -31,6 +31,46 @@ SIGNAL_INFLUENCER_JOB = "Hiring for influencer marketing"
 SIGNAL_CAMPAIGN = "Running influencer campaign"
 SIGNAL_MARKETING_JOB = "Hiring for marketing"
 
+PRIORITY = {SIGNAL_ASK: 1, SIGNAL_CAMPAIGN: 2, SIGNAL_INFLUENCER_JOB: 3, SIGNAL_MARKETING_JOB: 4}
+# An in-house "Content Creator" job is marketing hiring, not influencer marketing.
+IN_HOUSE_CREATOR = re.compile(r"(?:content|video|ugc|reels?|social(?: media)?(?: content)?|digital|on-camera|short-form|"
+                              r"ai|junior|senior|youtube)?\s*(?:content )?creators?\b(?! (?:partnerships?|marketing|relations|"
+                              r"programs?|community|success|activation|management|campaigns?|economy|operations|strategy))",
+                              re.I)
+INFLUENCER_ROLE = re.compile(r"influencer|\bkol\b|creator (?:partnerships?|marketing|relations|programs?|community|"
+                             r"success|activation|management|campaigns?|operations|strategy)|creators? (?:&|and) "
+                             r"(?:influencer|affiliate)|head of creators|director, creators|talent partnership|"
+                             r"brand partnership|linkedin", re.I)
+
+
+def job_signal(title: str, marketing_search: bool) -> str:
+    if marketing_search or (IN_HOUSE_CREATOR.search(title) and not INFLUENCER_ROLE.search(title)):
+        return SIGNAL_MARKETING_JOB
+    return SIGNAL_INFLUENCER_JOB
+
+
+def why_kept(r: dict, unsure: bool = False) -> str:
+    """A short rationale for keeping a brand row, from its signal and evidence."""
+    brand = r.get("Brand / Company") or r.get("Posted By") or "The poster"
+    sig, what = r.get("Signal", ""), r.get("Looking For", "")
+    src = r.get("Source", "")
+    place = src[src.find("(") + 1:-1] if src.startswith("LinkedIn job") and "(" in src else r.get("Market", "")
+    if sig == SIGNAL_ASK:
+        text = (f"{brand} asks for {what.lower()} in its own words (see Matched Text), and it's in the "
+                f"{r.get('Market', '')} market.")
+    elif sig == SIGNAL_CAMPAIGN:
+        text = f"{brand} is a brand already doing creator/influencer marketing ({what.lower()}), so it may buy more."
+    elif sig == SIGNAL_INFLUENCER_JOB:
+        text = (f"{brand} is a brand (not an agency or recruiter) hiring for '{what.removeprefix('Hiring: ')}' in "
+                f"{place}: it runs influencer/creator marketing.")
+    else:
+        text = (f"{brand} is a brand (not an agency or recruiter) hiring for '{what.removeprefix('Hiring: ')}' in "
+                f"{place}: it is investing in marketing (broader signal).")
+    if unsure:
+        text += " The name alone doesn't rule out an agency, so it's worth a quick check."
+    return text
+
+
 JOB_TITLE_RE = re.compile(r"influencer|creator|ugc|\bkol\b|brand partnership|talent partnership|"
                           r"linkedin (?:marketing|content|creator|brand|ghost ?writ|influencer)", re.I)
 
@@ -64,7 +104,10 @@ def company_keys(name: str, company_url: str = "") -> set[str]:
 class Collector:
     """New rows for the three tabs, deduplicated against the sheet and within the run."""
 
-    def __init__(self, existing_brands: list[dict], existing_agencies: list[dict], existing_creators: list[dict]):
+    def __init__(self, existing_brands: list[dict], existing_agencies: list[dict], existing_creators: list[dict],
+                 removed: list[dict] = ()):
+        # Rows taken out on review count as known, so they're never added again.
+        existing_brands = list(existing_brands) + [r for r in removed if r.get("From Tab", "").endswith("brands")]
         self.brand_urls = {url_key(r.get("Post / Job URL", "")) for r in existing_brands} - {""}
         # (page, name) key pairs of companies already listed from jobs
         self.job_companies = [company_keys(r.get("Brand / Company", ""), r.get("Company LinkedIn", ""))
@@ -96,6 +139,8 @@ class Collector:
             self.skipped["already in sheet"] += 1
             return False
         self.brand_urls.add(key)
+        row["Priority"] = PRIORITY.get(row.get("Signal", ""), 9)
+        row.setdefault("Why Kept", "Added by the script's rules: " + why_kept(row))
         row["Added At (IST)"] = fmt_time(datetime.now(timezone.utc))
         self.brands.append(row)
         return True
@@ -141,9 +186,10 @@ def collect_jobs(fetcher: Fetcher, out: Collector, now: datetime, marketing: boo
                         continue
                     out.job_companies.append(company_keys(job.company, job.company_url))
                     why = (f"Hiring a {job.title} in {job.location} (job posted {fmt_date(job.posted)}): "
-                           + ("investing in marketing." if marketing else "building influencer/creator marketing."))
+                           + ("investing in marketing." if job_signal(job.title, marketing) == SIGNAL_MARKETING_JOB
+                              else "building influencer/creator marketing."))
                     out.add_brand({"Brand / Company": job.company, "Company LinkedIn": job.company_url,
-                                   "Signal": SIGNAL_MARKETING_JOB if marketing else SIGNAL_INFLUENCER_JOB,
+                                   "Signal": job_signal(job.title, marketing),
                                    "Why Added": why, "Looking For": "Hiring: " + job.title, "Market": mkt,
                                    "Source": f"LinkedIn job ({job.location})", "Post / Job URL": job.url,
                                    "Posted On": fmt_date(job.posted), "Platforms Mentioned": "",
@@ -493,7 +539,7 @@ def run(dry_run: bool) -> int:
         brands, agencies, creators = book.brands.rows(), book.agencies.rows(), book.creators.rows()
         sheet_check(brands, agencies, creators)
         _safely(backfill, book.brands, brands)
-        out = Collector(brands, agencies, creators)
+        out = Collector(brands, agencies, creators, book.removed.rows())
     fetcher, searcher, reddit = Fetcher(), Searcher(), Reddit()
     slot = int(time.time() // (3 * 3600))
     try:
@@ -525,6 +571,7 @@ def run(dry_run: bool) -> int:
                     print(tab, {k: v for k, v in r.items() if v not in ("", 0)})
         else:
             book.brands.append(out.brands)
+            _safely(book.brands.sort_rows, ("Priority", "asc"), ("Added At (IST)", "des"))
             book.agencies.append(out.agencies)
             book.creators.append(out.creators)
         log.info("done in %.1f minutes", (time.time() - started) / 60)

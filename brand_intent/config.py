@@ -15,6 +15,7 @@ SHEET_ID = os.environ.get("SHEET_ID", "1h3GY7aUPnDZrv1lfYOrG1Oc932SFM843Hb3PFID7
 BRANDS_TAB = os.environ.get("BRANDS_TAB", "github script for brands")
 AGENCIES_TAB = os.environ.get("AGENCIES_TAB", "github script for agencies")
 CREATORS_TAB = os.environ.get("CREATORS_TAB", "github script for creators")
+REMOVED_TAB = os.environ.get("REMOVED_TAB", "Removed (review)")  # rows taken out on review; never re-added
 
 MAX_AGE_DAYS = _int("MAX_AGE_DAYS", 14)  # posts, jobs and news older than this are skipped
 

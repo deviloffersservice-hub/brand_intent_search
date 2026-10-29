@@ -442,3 +442,31 @@ def test_backfill_explains_old_rows():
                             "building influencer/creator marketing.") in t.updates
     assert any(r == 3 and h == "Why Added" and "ICC invites pitches" in v for r, h, v in t.updates)
     assert not any(r == 4 for r, _, _ in t.updates)
+
+
+def test_removed_rows_are_never_added_again():
+    removed = [{"From Tab": "github script for brands", "Post / Job URL": "https://www.linkedin.com/jobs/view/x-4483607308",
+                "Brand / Company": "Fame Bliss", "Company LinkedIn": "https://www.linkedin.com/company/fame-bliss",
+                "Source": "LinkedIn job (Mumbai)"}]
+    out = run.Collector([], [], [], removed)
+    assert out.seen("https://in.linkedin.com/jobs/view/x-4483607308/")
+    assert out.company_listed("Fame Bliss", "https://www.linkedin.com/company/fame-bliss")
+
+
+def test_in_house_content_creator_jobs_are_marketing_hiring():
+    m, i = run.SIGNAL_MARKETING_JOB, run.SIGNAL_INFLUENCER_JOB
+    assert run.job_signal("Social Media Content Creator", False) == m
+    assert run.job_signal("Video Content Creator (UGC & Growth)", False) == m
+    assert run.job_signal("UGC Creator", False) == m
+    assert run.job_signal("Influencer Marketing Manager", False) == i
+    assert run.job_signal("Creator Partnerships Lead", False) == i
+    assert run.job_signal("Senior Manager, Creators and Influencers", False) == i
+    assert run.job_signal("Social Media Manager", True) == m
+
+
+def test_new_rows_get_priority_and_why_kept():
+    out = run.Collector([], [], [])
+    out.add_brand({"Brand / Company": "Nykaa", "Signal": run.SIGNAL_INFLUENCER_JOB, "Looking For": "Hiring: Influencer Marketing Manager",
+                   "Source": "LinkedIn job (Mumbai, India)", "Market": "India", "Post / Job URL": "https://www.linkedin.com/jobs/view/1"})
+    r = out.brands[0]
+    assert r["Priority"] == 3 and "Nykaa is a brand" in r["Why Kept"] and "Mumbai, India" in r["Why Kept"]

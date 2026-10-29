@@ -10,9 +10,12 @@ from google.oauth2.service_account import Credentials
 
 from . import config
 
-BRAND_HEADERS = ["Added At (IST)", "Brand / Company", "Signal", "Why Added", "Company LinkedIn", "Posted By", "Poster Profile",
-                 "Poster Headline", "Looking For", "Platforms Mentioned", "Market", "Source", "Post / Job URL",
-                 "Posted On", "Matched Text", "Post Text", "Agencies in Comments", "Creators in Comments"]
+# Most useful columns first. "Priority" (1 direct ask ... 4 marketing hiring) keeps the tab sorted.
+BRAND_HEADERS = ["Brand / Company", "Signal", "Why Added", "Why Kept", "Market", "Looking For", "Source", "Post / Job URL",
+                 "Posted On", "Added At (IST)", "Company LinkedIn", "Posted By", "Poster Profile", "Poster Headline",
+                 "Platforms Mentioned", "Matched Text", "Post Text", "Agencies in Comments", "Creators in Comments",
+                 "Priority"]
+REMOVED_HEADERS = ["Removed At (IST)", "From Tab", "Reason Removed"] + [h for h in BRAND_HEADERS if h != "Why Kept"]
 PEOPLE_HEADERS = ["Added At (IST)", "Name", "Profile", "Headline", "Page Type", "Country", "Found Via",
                   "Comment / Post", "Brand", "Brand Post URL"]
 
@@ -66,6 +69,12 @@ class Tab:
         for i in range(0, len(data), 500):
             self.ws.batch_update(data[i:i + 500], value_input_option="RAW")
 
+    def sort_rows(self, *by: tuple[str, str]):
+        """Sort the data rows (header stays on top), e.g. sort_rows(("Priority", "asc"), ("Added At (IST)", "des"))."""
+        from gspread.utils import rowcol_to_a1
+        last = rowcol_to_a1(max(self.ws.row_count, 2), len(self.headers))
+        self.ws.sort(*[(self.headers.index(h) + 1, d) for h, d in by], range=f"A2:{last}")
+
     def append(self, records: list[dict]):
         if records:
             self.ws.append_rows([[str(r.get(h, ""))[:5000] for h in self.headers] for r in records],
@@ -78,3 +87,4 @@ class Book:
         self.brands = Tab(book, config.BRANDS_TAB, BRAND_HEADERS)
         self.agencies = Tab(book, config.AGENCIES_TAB, PEOPLE_HEADERS)
         self.creators = Tab(book, config.CREATORS_TAB, PEOPLE_HEADERS)
+        self.removed = Tab(book, config.REMOVED_TAB, REMOVED_HEADERS)

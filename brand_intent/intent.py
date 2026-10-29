@@ -59,11 +59,38 @@ PLATFORMS = {"LinkedIn": r"\blinkedin\b", "Instagram": r"\b(?:instagram|insta|re
              "TikTok": r"\btiktok\b", "Facebook": r"\bfacebook\b"}
 
 
+# Who is asking: real asks are in the poster's own voice. Advice ("you don't need an agency"),
+# examples ("a business searching for a marketing agency") and self-descriptions ("the shift I need
+# to make as a LinkedIn creator") are not.
+NEGATION = re.compile(r"\b(?:don'?t|do not|doesn'?t|does not|didn'?t|no need|never|without|stop|isn'?t|not|won'?t)\b"
+                      r"[^.!?\n]{0,15}$", re.I)
+OTHER_SUBJECT = re.compile(r"\b(?:you|your|someone|somebody|a business|businesses|brands|companies|startups|founders|"
+                           r"marketers|people|users|customers|buyers|homeowners?|most|many|every|they|he|she|them|"
+                           r"agencies|clients)\b", re.I)
+SELF_AS = re.compile(r"\bas an?\s+(?:[\w-]+\s+){0,3}$", re.I)
+
+
+def _own_ask(text: str, m: re.Match) -> bool:
+    sentence_start = max(text.rfind(c, 0, m.start()) for c in ".!?\n") + 1
+    before = text[sentence_start:m.start()]
+    if NEGATION.search(before) or (OTHER_SUBJECT.search(before) and not re.search(r"\b(?:we|i|our|my|us)\b", before, re.I)):
+        return False
+    # the words between the ask and its target, e.g. "to make as a " in "I need to make as a LinkedIn creator"
+    gap = re.match(SEEK + r"(.*)$", m.group(0), re.I | re.S)
+    tail = text[m.start():m.end()]
+    for target in TARGETS.values():
+        t = re.search(target, tail, re.I)
+        if t and SELF_AS.search(tail[:t.start()]):
+            return False
+    return gap is not None
+
+
 def wants(text: str) -> list[str]:
     """Labels of what the text is asking for, most specific first; [] if it isn't asking."""
     if not text or SELF_PROMO.search(text) or CREATOR_PITCH.search(text):
         return []
-    found = [label for label, rx in SEEK_TARGET.items() if rx.search(text)]
+    found = [label for label, rx in SEEK_TARGET.items()
+             if any(_own_ask(text, m) for m in rx.finditer(text))]
     if "LinkedIn influencers/creators" in found and "Creators / influencers" in found:
         found.remove("Creators / influencers")
     if "Influencer marketing agency" in found and "Marketing agency" in found:
@@ -112,10 +139,12 @@ def market(country_sub: str, text: str, location: str = "") -> str:
 # --- agencies, recruiters and platforms (not brands) -------------------------------------------
 AGENCY_NAME = re.compile(r"\b(?:agency|agencies|influencer marketing|talent management|media|creator network|"
                          r"marketing|communications|comms|advertising|ad ?works|creatives?|public relations|pr|"
-                         r"digital (?:media|solutions|labs?)|influencers?|branding|studios?)\b", re.I)
+                         r"digital (?:media|solutions|labs?)|influencers?|branding|studios?|interactive|"
+                         r"growth partners|technolabs|digiworld)\b", re.I)
 RECRUITER_NAME = re.compile(r"\b(?:talent (?:acquisition|destination|solutions|partners)|careers?|staffing|recruit\w*|"
-                            r"placements?|hr (?:services|solutions|consult\w*)|manpower|headhunt\w*|hiring partners?|"
-                            r"human capital\w*|job(?:s| portal)?)\b", re.I)
+                            r"placements?|hr|hr (?:services|solutions|consult\w*)|manpower|headhunt\w*|hiring partners?|"
+                            r"hiring solutions|human capital\w*|job(?:s| portal)?|jobgether|professional search|"
+                            r"search partners|consultan(?:t|ts|cy)|robert half|aquent|jobot|lhh)\b", re.I)
 # Big agency networks and influencer platforms whose names don't say "agency" (matched as a prefix:
 # "Ogilvy India", "Dentsu Creative" ...).
 KNOWN_AGENCIES = ("dentsu", "wpp", "ogilvy", "publicis", "omnicom", "havas", "ipg", "mccann", "leo burnett", "kinnect",

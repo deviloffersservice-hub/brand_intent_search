@@ -128,3 +128,21 @@ def test_news_brand_names():
     assert intent.brand_from_title("Exclusive: Bisleri calls for creative pitch") == "Bisleri"
     assert intent.brand_from_title("Why brands are looking for agencies") == ""
     assert intent.brand_from_title("Swiggy's Instamart is looking for a creative agency") == "Swiggy's Instamart"
+
+
+@pytest.mark.parametrize("text", [
+    "Running Meta Ads on a small budget? You still don't need a full-time digital marketing agency on a monthly retainer.",
+    "For example: - A business searching for a marketing agency. These users may already have a clear need.",
+    "And maybe that's the shift I need to make as a LinkedIn content creator.",
+    "You don't need creator retainers to win on TikTok Shop.",
+    "Most brands are looking for creators who actually convert.",
+    "We don't need an agency, we built this in-house.",
+])
+def test_advice_examples_and_self_descriptions_are_not_asks(text):
+    assert intent.wants(text) == []
+
+
+def test_own_voice_asks_still_count():
+    assert intent.wants("We are looking for creators for our launch. Most brands get this wrong.") == ["Creators / influencers"]
+    assert intent.wants("Can anyone recommend a LinkedIn ghostwriter for our CEO?") == ["LinkedIn influencers/creators"]
+    assert intent.wants("Our team is looking for an influencer marketing agency in Mumbai") == ["Influencer marketing agency"]
