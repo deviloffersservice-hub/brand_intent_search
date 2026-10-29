@@ -146,3 +146,13 @@ def test_own_voice_asks_still_count():
     assert intent.wants("We are looking for creators for our launch. Most brands get this wrong.") == ["Creators / influencers"]
     assert intent.wants("Can anyone recommend a LinkedIn ghostwriter for our CEO?") == ["LinkedIn influencers/creators"]
     assert intent.wants("Our team is looking for an influencer marketing agency in Mumbai") == ["Influencer marketing agency"]
+
+
+def test_agency_sales_copy_is_not_an_ask():
+    ad = ("🚀 SEO Services for Social Media Influencers! At Hyperledger IT - Digital Marketing Agency, we provide professional "
+          "SEO Services for Social Media Influencers. 🌟 Our SEO Services for Influencers Include: ... "
+          "Looking for an SEO Company for Influencers? Contact us today!")
+    assert intent.wants(ad) == []
+    # a brand that mentions what it offers creators is still asking
+    assert intent.wants("Looking for UGC creators for our skincare brand. We offer free products + paid collabs.") == \
+        ["Creators / influencers"]

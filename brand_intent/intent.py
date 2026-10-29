@@ -57,7 +57,11 @@ SELF_PROMO = re.compile(
     r"(?:we (?:help|can|offer|are|do|make)|we're|look no further|let us|let's talk|contact us|dm us|"
     r"reach out to us|book a|check out|you're in the right place|our (?:agency|team) (?:can|helps?))|"
     r"\b(?:our agency|our clients|we are an? (?:\w+ ){0,3}agency|we're an? (?:\w+ ){0,3}agency|"
-    r"book a (?:free )?(?:call|demo|consultation)|#hiring\b.*\b(?:intern|internship)\b)", re.I | re.S)
+    r"book a (?:free )?(?:call|demo|consultation)|#hiring\b.*\b(?:intern|internship)\b|"
+    # sales copy: "we provide professional SEO services", "Our services include", "Contact us today"
+    r"we (?:provide|offer) (?:\w+ ){0,3}(?:services?|solutions?)|our (?:\w+ ){0,3}services?(?: include)?\b|"
+    r"services include|contact us (?:today|now|for)|call us (?:today|now|at)|visit our website|get a free (?:quote|audit))",
+    re.I | re.S)
 # A creator pitching themselves to brands ("I partner with brands as a LinkedIn creator").
 CREATOR_PITCH = re.compile(r"\b(?:i(?:'m| am) an? (?:\w+ ){0,3}(?:creator|influencer)|"
                            r"(?:brands|companies),? (?:let's|lets) (?:collaborate|work together)|"
