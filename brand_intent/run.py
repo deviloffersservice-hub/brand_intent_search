@@ -111,7 +111,7 @@ class Collector:
     def __init__(self, existing_brands: list[dict], existing_agencies: list[dict], existing_creators: list[dict],
                  removed: list[dict] = ()):
         # Rows taken out on review count as known, so they're never added again.
-        existing_brands = list(existing_brands) + [r for r in removed if r.get("From Tab", "").endswith("brands")]
+        existing_brands = list(existing_brands) + [r for r in removed if r.get("From Tab", "").startswith("github script")]
         self.brand_urls = {url_key(r.get("Post / Job URL", "")) for r in existing_brands} - {""}
         # (page, name) key pairs of companies already listed from jobs
         self.job_companies = [company_keys(r.get("Brand / Company", ""), r.get("Company LinkedIn", ""))
@@ -120,6 +120,7 @@ class Collector:
                             if r.get("Source", "").startswith("News") and r.get("Brand / Company")}
         self.people = {r.get("Profile", "").lower().rstrip("/") for r in existing_agencies + existing_creators}
         self.brands: list[dict] = []
+        self.jobs: list[dict] = []  # job ads -> the hiring tab
         self.agencies: list[dict] = []
         self.creators: list[dict] = []
         self.skipped = Counter()
@@ -146,7 +147,7 @@ class Collector:
         row["Priority"] = PRIORITY.get(row.get("Signal", ""), 9)
         row.setdefault("Why Kept", "Added by the script's rules: " + why_kept(row))
         row["Added At (IST)"] = fmt_time(datetime.now(timezone.utc))
-        self.brands.append(row)
+        (self.jobs if row.get("Source", "").startswith("LinkedIn job") else self.brands).append(row)
         return True
 
     def add_person(self, kind: str, row: dict) -> bool:
@@ -157,6 +158,10 @@ class Collector:
         row["Added At (IST)"] = fmt_time(datetime.now(timezone.utc))
         (self.agencies if kind == "Agency" else self.creators).append(row)
         return True
+
+
+def target_met(out) -> bool:
+    return bool(config.TARGET_BRANDS) and len(out.brands) + len(out.jobs) >= config.TARGET_BRANDS
 
 
 def recent(dt: datetime | None, now: datetime) -> bool:
@@ -171,7 +176,7 @@ def collect_jobs(fetcher: Fetcher, out: Collector, now: datetime, marketing: boo
     for kw in keywords:
         for loc in queries.JOB_LOCATIONS:
             for page in range(config.JOB_PAGES_PER_QUERY):
-                if len(out.brands) >= config.TARGET_BRANDS:
+                if target_met(out):
                     return
                 try:
                     jobs = fetcher.jobs(kw, loc, start=page * 10)
@@ -185,8 +190,11 @@ def collect_jobs(fetcher: Fetcher, out: Collector, now: datetime, marketing: boo
                     if job.company.lower() == "linkedin" or intent.looks_like_agency(job.company, slug=slug_words):
                         out.skipped["job at an agency"] += 1
                         continue
-                    mkt = intent.market("", "", job.location) or ("US" if loc == "United States" else "")
-                    if not mkt or out.company_listed(job.company, job.company_url):
+                    mkt = intent.market("", "", job.location)
+                    if mkt != "India":
+                        out.skipped["job not located in India"] += 1
+                        continue
+                    if out.company_listed(job.company, job.company_url):
                         continue
                     out.job_companies.append(company_keys(job.company, job.company_url))
                     why = (f"Hiring a {job.title} in {job.location} (job posted {fmt_date(job.posted)}): "
@@ -211,9 +219,12 @@ def handle_post(fetcher: Fetcher, url: str, out: Collector, now: datetime, found
         out.skipped["post older than 14 days"] += 1
         return post
     looking = intent.wants(post.text)
+    if looking and not intent.influencer_related(looking, post.text):
+        out.skipped["ask not about influencers/creators"] += 1
+        return post
     if not looking:
         campaign = intent.campaign_signal(post.text) if a.is_company else ""
-        if campaign and not intent.looks_like_agency(a.name) and (mkt := intent.market(a.country, post.text)):
+        if campaign and not intent.looks_like_agency(a.name) and intent.india(mkt := intent.market(a.country, post.text)):
             out.add_brand({"Brand / Company": a.name, "Signal": SIGNAL_CAMPAIGN,
                            "Why Added": f"{campaign}: the brand's own LinkedIn post on {fmt_date(post.published)} "
                                         f"says \"{intent.CAMPAIGN.search(post.text).group(0)}\".",
@@ -237,8 +248,8 @@ def handle_post(fetcher: Fetcher, url: str, out: Collector, now: datetime, found
         out.skipped["poster is an agency"] += 1
         return post
     mkt = intent.market(a.country, post.text)
-    if not mkt:
-        out.skipped["not India/US"] += 1
+    if not intent.india(mkt):
+        out.skipped["not India"] += 1
         return post
     brand = a.name if a.is_company else intent.company_from_headline(a.headline)
     agencies, creators = collect_commenters(post, looking, out, brand or a.name)
@@ -292,8 +303,8 @@ def handle_reddit(reddit: Reddit, hit, out: Collector, now: datetime):
         return
     # India subreddits (r/india, r/IndianStartups, r/IndiaBusiness...) count as Indian posters.
     mkt = intent.market("in" if re.search(r"india(?!na)", t.subreddit, re.I) else "", blob)
-    if not mkt:
-        out.skipped["not India/US"] += 1
+    if not intent.india(mkt) or not intent.influencer_related(looking, blob):
+        out.skipped["not India / not about influencers"] += 1
         return
     agencies = creators = 0
     for user, body in t.comments:
@@ -325,8 +336,10 @@ def handle_news(hit, out: Collector, now: datetime):
     looking = intent.news_wants(hit.title, hit.snippet)
     campaign = "" if looking else intent.campaign_signal(f"{hit.title}. {hit.snippet}")
     mkt = intent.market("", f"{hit.title}. {hit.snippet}")
-    if not (looking or campaign) or not mkt:
-        out.skipped["news not an ask / not India-US"] += 1
+    if looking and not intent.influencer_related(looking, f"{hit.title}. {hit.snippet}"):
+        looking = []
+    if not (looking or campaign) or not intent.india(mkt):
+        out.skipped["news not an influencer ask / not India"] += 1
         return
     brand = intent.brand_from_title(hit.title)
     if brand and intent.looks_like_agency(brand):
@@ -453,7 +466,7 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
             [("reddit", q) for q in queries.rotation(queries.REDDIT, 4, slot)] +
             [("linkedin", q) for q in queries.rotation(queries.LINKEDIN_POSTS, 8, slot)])
     for kind, q in plan:
-        if len(out.brands) >= config.TARGET_BRANDS:
+        if target_met(out):
             break
         if not searcher.alive:
             log.info("search engines stopped answering; ending searches")
@@ -473,7 +486,7 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
              len(crawl.heap))
 
     pages = with_related = 0
-    while len(out.brands) < config.TARGET_BRANDS and pages < config.MAX_POST_PAGES and (url := crawl.pop()):
+    while not target_met(out) and pages < config.MAX_POST_PAGES and (url := crawl.pop()):
         if out.seen(url):
             continue
         pages += 1
@@ -559,7 +572,7 @@ def run(dry_run: bool) -> int:
         brands, agencies, creators = book.brands.rows(), book.agencies.rows(), book.creators.rows()
         sheet_check(brands, agencies, creators)
         _safely(backfill, book.brands, brands)
-        out = Collector(brands, agencies, creators, book.removed.rows())
+        out = Collector(brands + book.hiring.rows() + book.us.rows(), agencies, creators, book.removed.rows())
     fetcher, searcher, reddit = Fetcher(), Searcher(), Reddit()
     slot = int(time.time() // (3 * 3600))
     try:
@@ -572,10 +585,10 @@ def run(dry_run: bool) -> int:
                 log.warning("LinkedIn refused job searches (%s)", e)
                 break
     finally:  # whatever happened, keep what was found
-        log.info("new: %d brands (target %d%s), %d agencies, %d creators; skipped: %s", len(out.brands),
-                 config.TARGET_BRANDS, "" if len(out.brands) >= config.TARGET_BRANDS
-                 else f", short by {config.TARGET_BRANDS - len(out.brands)}",
-                 len(out.agencies), len(out.creators), dict(out.skipped.most_common()))
+        log.info("new: %d brands (India influencer asks/campaigns), %d hiring companies (India job ads), "
+                 "%d agencies, %d creators; skipped: %s", len(out.brands), len(out.jobs), len(out.agencies),
+                 len(out.creators), dict(out.skipped.most_common()))
+        log.info("hiring by signal: %s", dict(Counter(r.get("Signal", "") for r in out.jobs)))
         log.info("brands by source: %s", dict(Counter(r["Source"].split(" (")[0] for r in out.brands)))
         log.info("brands by signal: %s", dict(Counter(r.get("Signal", "") for r in out.brands)))
         for r in out.brands:
@@ -586,12 +599,15 @@ def run(dry_run: bool) -> int:
             for r in rows:
                 log.info("  + %s %s | %s | %s", kind, r["Name"], r.get("Headline", "")[:60], r["Profile"])
         if dry_run:
-            for tab, rows in (("BRAND", out.brands), ("AGENCY", out.agencies), ("CREATOR", out.creators)):
+            for tab, rows in (("BRAND", out.brands), ("HIRING", out.jobs), ("AGENCY", out.agencies),
+                              ("CREATOR", out.creators)):
                 for r in rows:
                     print(tab, {k: v for k, v in r.items() if v not in ("", 0)})
         else:
             book.brands.append(out.brands)
             _safely(book.brands.sort_rows, ("Priority", "asc"), ("Added At (IST)", "des"))
+            book.hiring.append(out.jobs)
+            _safely(book.hiring.sort_rows, ("Priority", "asc"), ("Added At (IST)", "des"))
             book.agencies.append(out.agencies)
             book.creators.append(out.creators)
         log.info("done in %.1f minutes", (time.time() - started) / 60)

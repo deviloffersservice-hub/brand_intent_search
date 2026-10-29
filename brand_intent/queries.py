@@ -103,7 +103,7 @@ JOB_KEYWORDS = [
     "LinkedIn marketing",
     "LinkedIn content",
 ]
-JOB_LOCATIONS = ["India", "United States"]
+JOB_LOCATIONS = ["India"]
 
 # Broader signal, used last to fill a run up to its target: companies hiring for marketing roles.
 MARKETING_JOB_KEYWORDS = [

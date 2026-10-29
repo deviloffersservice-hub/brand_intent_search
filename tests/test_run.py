@@ -48,7 +48,7 @@ def test_old_or_non_asking_or_out_of_market_posts_are_skipped():
                        author=Person("Acme GmbH", "https://www.linkedin.com/company/acme", "company", "de"))):
         run.handle_post(FakeFetcher(post), post.url, out, NOW, "search")
     assert out.brands == []
-    assert set(out.skipped) == {"post older than 14 days", "post isn't an ask", "not India/US"}
+    assert set(out.skipped) == {"post older than 14 days", "post isn't an ask", "not India"}
 
 
 def test_agency_posting_for_creators_goes_to_agencies():
@@ -116,3 +116,28 @@ def test_agency_ask_also_collects_vendor_commenters():
     out = run.Collector([], [], [])
     run.handle_post(FakeFetcher(post), post.url, out, NOW, "search")
     assert out.brands == [] and {a["Name"] for a in out.agencies} == {"Riya", "Piyush"}
+
+
+def test_india_only_influencer_scope():
+    out = run.Collector([], [], [])
+    us = Person("Acme", "https://www.linkedin.com/company/acme", "company", "www")
+    uk = Person("Brit", "https://www.linkedin.com/company/brit", "company", "uk")
+    cases = [
+        (_post("We are looking for UGC creators for our launch", author=us), False),                       # US brand
+        (_post("We are looking for a digital marketing agency in Mumbai"), False),                        # not influencer
+        (_post("We are looking for Indian creators for our India launch next month", author=uk), True),   # targets India
+        (_post("We are looking for a LinkedIn marketing agency for our B2B brand"), True),                # LinkedIn marketing
+    ]
+    for i, (post, keep) in enumerate(cases):
+        post.url = f"https://www.linkedin.com/posts/x_y-activity-{7520000000000000000 + i}-ab"
+        before = len(out.brands)
+        run.handle_post(FakeFetcher(post), post.url, out, NOW, "search")
+        assert (len(out.brands) > before) == keep, post.text
+    assert out.brands[0]["Market"] == "India market"
+
+
+def test_rows_in_the_us_archive_are_not_added_again():
+    us_row = {"Post / Job URL": "https://www.linkedin.com/jobs/view/glossier-123456789", "Brand / Company": "Glossier",
+              "Company LinkedIn": "https://www.linkedin.com/company/glossier", "Source": "LinkedIn job (New York, NY)"}
+    out = run.Collector([us_row], [], [])
+    assert out.seen("https://www.linkedin.com/jobs/view/glossier-123456789")

@@ -16,6 +16,8 @@ BRAND_HEADERS = ["Brand / Company", "Signal", "Why Added", "Why Kept", "Market",
                  "Platforms Mentioned", "Matched Text", "Post Text", "Agencies in Comments", "Creators in Comments",
                  "Priority"]
 REMOVED_HEADERS = ["Removed At (IST)", "From Tab", "Reason Removed"] + [h for h in BRAND_HEADERS if h != "Why Kept"]
+HIRING_HEADERS = ["Brand / Company", "Signal", "Looking For", "Source", "Why Added", "Why Kept", "Post / Job URL",
+                  "Posted On", "Added At (IST)", "Company LinkedIn", "Market", "Priority"]
 PEOPLE_HEADERS = ["Added At (IST)", "Name", "Company (from comment)", "Public Contact", "Profile", "Headline", "Page Type",
                   "Country", "Found Via", "Comment / Post", "Brand", "Brand Post URL"]
 
@@ -88,3 +90,5 @@ class Book:
         self.agencies = Tab(book, config.AGENCIES_TAB, PEOPLE_HEADERS)
         self.creators = Tab(book, config.CREATORS_TAB, PEOPLE_HEADERS)
         self.removed = Tab(book, config.REMOVED_TAB, REMOVED_HEADERS)
+        self.hiring = Tab(book, config.HIRING_TAB, HIRING_HEADERS)
+        self.us = Tab(book, config.US_TAB, BRAND_HEADERS)  # read only: rows there are never added again

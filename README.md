@@ -1,37 +1,23 @@
 # Brand intent search
 
-Every 3 hours this finds **brands that want marketing help**:
-- an influencer marketing agency;
-- LinkedIn influencers or creators;
-- creators on any platform;
-- any marketing or LinkedIn marketing agency.
-
-It keeps only brands in **India or the US**, plus brands anywhere that are marketing **in India**,
-and only asks from the **last 14 days**. It also collects the **agencies and creators who reply**
-in those posts' comments.
-
-Results go to three tabs in
-[this Google Sheet](https://docs.google.com/spreadsheets/d/1h3GY7aUPnDZrv1lfYOrG1Oc932SFM843Hb3PFID7Ya4/edit):
+Every 3 hours this finds **brands in India, or brands anywhere targeting India**, that want
+**influencer / creator marketing**: they ask for LinkedIn creators, influencers, UGC creators, an
+influencer agency or a vendor to supply creators (any platform), or they're running an influencer
+campaign. It also collects the **agencies, vendors and creators who reply** in the comments, and
+**Indian companies hiring** for influencer and marketing roles.
 
 | Tab | One row per |
 |---|---|
-| `github script for brands` | brand ask: what they want, market, source, link, date, the matching text, and how many agencies and creators replied |
-| `github script for agencies` | agency: from a comment on a brand post, a Reddit reply, or an agency's own post asking for creators |
-| `github script for creators` | creator who replied to a brand post |
+| `github script for brands` | India-relevant brand asking for influencers/creators/influencer agencies, or running an influencer campaign |
+| `github script for hiring companies` | company with a job ad located in India for an influencer/creator role or a marketing role (social media, brand, digital, content...) |
+| `github script for agencies` | agency/vendor pitching in the comments of an ask (any country; anchors' own team skipped), or an agency posting such an ask itself |
+| `github script for creators` | creator replying to an ask (any country) |
+| `Removed (review)` | rows taken out on review, with the reason; never added again |
+| `github script for brands (US)` | archive of US rows from before the India-only change; not updated |
 
-Every brand row has a **Signal** and a **Why Added** sentence. Each run fills its 100 in this order:
-
-| Signal | What it means | Example of "Why Added" |
-|---|---|---|
-| Direct ask | The brand posted (LinkedIn, Reddit, news) that it wants an agency or creators | Posted on LinkedIn on 2026-10-27 asking for influencer marketing agency: "…" |
-| Hiring for influencer marketing | Job ad for an influencer/creator/LinkedIn-marketing role | Hiring a Influencer Marketing Manager in Mumbai (job posted 2026-10-27): building influencer/creator marketing. |
-| Running influencer campaign | The brand just launched a creator campaign or appointed an influencer agency (its own LinkedIn post, or the news) | Appointed an agency (News (afaqs), 2026-10-27): "Boat appoints … as influencer marketing agency". |
-| Hiring for marketing | Job ad for a social media, digital, brand, content, performance or growth marketing role (a broader signal, used last to fill up to 100) | Hiring a Social Media Manager in Delhi (job posted 2026-10-26): investing in marketing. |
-
-There are no duplicates. Brands are deduplicated by post or job link, with one job row per company.
-Agencies and creators are deduplicated by profile.
-
-It's free: no LinkedIn login, no paid APIs, and it runs on GitHub Actions in a public repo.
+Only items from the **last 14 days**, no duplicates across all these tabs, no per-run target: each run
+adds every genuine row it finds. Every brand/hiring row has a **Signal**, **Why Added** and **Why Kept**.
+It's free: no LinkedIn login, no paid APIs, GitHub Actions in a public repo.
 
 ## Sources
 

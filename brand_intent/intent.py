@@ -336,3 +336,20 @@ def pitch_details(comment: str) -> tuple[str, str]:
 # Comments by our own team are skipped (set ANCHORS_TEAM to a regex of names/companies to skip).
 import os  # noqa: E402
 OWN_TEAM = re.compile(os.environ.get("OWN_TEAM", r"\banchors?\b|@anchors|anchors\.in"), re.I)
+
+
+# --- scope: India, influencer/creator marketing ------------------------------------------------
+INFLUENCER_LABELS = {"LinkedIn influencers/creators", "Influencer marketing agency", "Creators / influencers",
+                     "Vendor for creators"}
+
+
+def influencer_related(looking: list[str], text: str) -> bool:
+    """The brands tab keeps influencer/creator asks (any platform), plus agency asks that are about
+    LinkedIn marketing or influencers/creators."""
+    if set(looking) & INFLUENCER_LABELS:
+        return True
+    return bool(looking) and bool(re.search(r"\blinkedin\b|influencer|creator|\bugc\b|\bkols?\b", text or "", re.I))
+
+
+def india(market_: str) -> bool:
+    return market_ in ("India", "India market")

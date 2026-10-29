@@ -146,7 +146,8 @@ def test_jobs_fill_up_skip_agencies_old_and_repeat_companies():
     ]
     out = run.Collector([], [], [])
     run.collect_jobs(FakeFetcher(jobs={("influencer marketing", "India", 0): jobs}), out, NOW)
-    assert [(b["Brand / Company"], b["Market"]) for b in out.brands] == [("Nykaa", "India"), ("Glossier", "US")]
+    # India only now: the New York and Berlin jobs are skipped; job ads go to the hiring tab
+    assert out.brands == [] and [(b["Brand / Company"], b["Market"]) for b in out.jobs] == [("Nykaa", "India")]
 
 
 def test_companies_already_in_sheet_from_jobs_are_not_added_again():
@@ -159,8 +160,9 @@ def test_companies_already_in_sheet_from_jobs_are_not_added_again():
 
 def test_news_and_reddit_rows(monkeypatch):
     out = run.Collector([], [], [])
-    run.handle_news(Hit("https://news/1", "Mamaearth calls for digital creative pitch", "Mumbai-based brand",
+    run.handle_news(Hit("https://news/1", "Mamaearth calls for influencer marketing pitch", "Mumbai-based brand",
                         NOW - timedelta(days=2), "afaqs"), out, NOW)
+    run.handle_news(Hit("https://news/4", "Bisleri calls for digital creative pitch", "Mumbai", NOW, "afaqs"), out, NOW)
     run.handle_news(Hit("https://news/2", "Old brand calls for pitch in India", "", NOW - timedelta(days=40)), out, NOW)
     run.handle_news(Hit("https://news/3", "Acme GmbH calls for agency pitch", "Berlin", NOW), out, NOW)
     assert [b["Brand / Company"] for b in out.brands] == ["Mamaearth"]
@@ -257,7 +259,7 @@ def test_searcher_keeps_going_through_quiet_phrases(monkeypatch):
 def test_same_news_story_from_two_outlets_is_one_row():
     out = run.Collector([], [], [])
     for url, src in (("https://a/1", "Storyboard18"), ("https://b/2", "MediaNews4U")):
-        run.handle_news(Hit(url, "ICC invites pitches for marketing, PR mandate", "in Mumbai", NOW, src), out, NOW)
+        run.handle_news(Hit(url, "Nykaa invites pitches for influencer mandate", "in Mumbai", NOW, src), out, NOW)
     assert len(out.brands) == 1
 
 
@@ -413,14 +415,15 @@ def test_signal_and_why_on_every_kind_of_row():
     f = FakeFetcher(jobs=jobs)
     run.collect_jobs(f, out, NOW)
     run.collect_jobs(f, out, NOW, marketing=True)
-    got = {b["Brand / Company"]: (b["Signal"], b["Why Added"]) for b in out.brands}
+    got = {b["Brand / Company"]: (b["Signal"], b["Why Added"]) for b in out.brands + out.jobs}
+    assert {b["Brand / Company"] for b in out.jobs} == {"Lenskart", "Sugar Cosmetics"}
     assert got["Acme"][0] == "Direct ask" and "asking for influencer marketing agency" in got["Acme"][1]
     assert got["Nykaa"][0] == "Running influencer campaign" and "partnered with 200 creators" in got["Nykaa"][1]
     assert got["Boat"][0] == "Running influencer campaign" and "Appointed an agency" in got["Boat"][1]
     assert got["Lenskart"][0] == "Hiring for influencer marketing"
     assert got["Sugar Cosmetics"][0] == "Hiring for marketing" and "investing in marketing" in got["Sugar Cosmetics"][1]
     assert "Zepto" not in got
-    assert all(b["Why Added"] for b in out.brands)
+    assert all(b["Why Added"] for b in out.brands + out.jobs)
 
 
 def test_backfill_explains_old_rows():
@@ -468,7 +471,7 @@ def test_new_rows_get_priority_and_why_kept():
     out = run.Collector([], [], [])
     out.add_brand({"Brand / Company": "Nykaa", "Signal": run.SIGNAL_INFLUENCER_JOB, "Looking For": "Hiring: Influencer Marketing Manager",
                    "Source": "LinkedIn job (Mumbai, India)", "Market": "India", "Post / Job URL": "https://www.linkedin.com/jobs/view/1"})
-    r = out.brands[0]
+    r = out.jobs[0]
     assert r["Priority"] == 3 and "Nykaa is a brand" in r["Why Kept"] and "Mumbai, India" in r["Why Kept"]
 
 
