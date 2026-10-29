@@ -226,11 +226,14 @@ def handle_post(fetcher: Fetcher, url: str, out: Collector, now: datetime, found
         out.skipped["post isn't an ask"] += 1
         return post
     if intent.looks_like_agency(a.name, a.headline):
-        # An agency asking for creators for its clients: an agency lead, not a brand.
+        # An agency asking for creators/vendors for its clients: kept in the agencies tab (with the vendors
+        # pitching in its comments), not in the brands tab.
         out.add_person("Agency", {"Name": a.name, "Profile": a.url, "Headline": a.headline,
                                   "Page Type": "Company page" if a.is_company else "Person",
-                                  "Country": country_name(a.country), "Found Via": "Agency's own post",
-                                  "Comment / Post": post.text[:500], "Brand": "", "Brand Post URL": post.url})
+                                  "Country": country_name(a.country), "Found Via": "Agency's own post asking for "
+                                  + ", ".join(looking).lower(), "Comment / Post": post.text[:500], "Brand": "",
+                                  "Brand Post URL": post.url})
+        collect_commenters(post, looking, out, a.name)
         out.skipped["poster is an agency"] += 1
         return post
     mkt = intent.market(a.country, post.text)
@@ -238,18 +241,7 @@ def handle_post(fetcher: Fetcher, url: str, out: Collector, now: datetime, found
         out.skipped["not India/US"] += 1
         return post
     brand = a.name if a.is_company else intent.company_from_headline(a.headline)
-    agencies = creators = 0
-    for c in post.comments:
-        p = c.author
-        kind = intent.commenter_type(p.name, p.headline, p.is_company, c.text, looking)
-        if not kind or p.url == a.url:
-            continue
-        agencies += kind == "Agency"  # everyone who replied, even if already listed from another post
-        creators += kind == "Creator"
-        out.add_person(kind, {"Name": p.name, "Profile": p.url, "Headline": p.headline,
-                              "Page Type": "Company page" if p.is_company else "Person",
-                              "Country": country_name(p.country), "Found Via": "Comment on brand post",
-                              "Comment / Post": c.text[:500], "Brand": brand or a.name, "Brand Post URL": post.url})
+    agencies, creators = collect_commenters(post, looking, out, brand or a.name)
     out.add_brand({"Brand / Company": brand, "Signal": SIGNAL_ASK,
                    "Why Added": f"Posted on LinkedIn on {fmt_date(post.published)} asking for "
                                 f"{', '.join(looking).lower()}: \"{intent.evidence(post.text)}\".",
@@ -260,6 +252,29 @@ def handle_post(fetcher: Fetcher, url: str, out: Collector, now: datetime, found
                    "Posted On": fmt_date(post.published), "Matched Text": intent.evidence(post.text),
                    "Post Text": post.text[:1500], "Agencies in Comments": agencies, "Creators in Comments": creators})
     return post
+
+
+def collect_commenters(post, looking: list[str], out: Collector, asker: str) -> tuple[int, int]:
+    """Agencies/vendors and creators replying to an ask -> their tabs. Our own team is skipped.
+    Returns how many agencies and creators replied (even ones already listed from another post)."""
+    agencies = creators = 0
+    for c in post.comments:
+        p = c.author
+        if p.url == post.author.url or intent.OWN_TEAM.search(f"{c.text} {p.headline}"):
+            continue
+        kind = intent.commenter_type(p.name, p.headline, p.is_company, c.text, looking)
+        if not kind:
+            continue
+        agencies += kind == "Agency"
+        creators += kind == "Creator"
+        company, contact = intent.pitch_details(c.text)
+        out.add_person(kind, {"Name": p.name, "Profile": p.url, "Headline": p.headline,
+                              "Company (from comment)": company, "Public Contact": contact,
+                              "Page Type": "Company page" if p.is_company else "Person",
+                              "Country": country_name(p.country), "Found Via": "Comment on a post asking for "
+                              + ", ".join(looking).lower(), "Comment / Post": c.text[:500], "Brand": asker,
+                              "Brand Post URL": post.url})
+    return agencies, creators
 
 
 # --- Reddit -------------------------------------------------------------------------------------
@@ -432,6 +447,7 @@ def search_and_read(fetcher: Fetcher, searcher: Searcher, reddit: Reddit, out: C
         crawl.load(config.STATE_FILE)
     # Topical seeds and news answer most often, so they go first; exact-ask phrases rarely do.
     plan = ([("seed", q) for q in queries.rotation(queries.LINKEDIN_SEEDS, 8, slot)] +
+            [("linkedin", q) for q in queries.rotation(queries.VENDOR_ASKS, 6, slot)] +
             [("news", q) for q in queries.rotation(queries.NEWS, 6, slot)] +
             [("news", q) for q in queries.rotation(queries.CAMPAIGN_NEWS, 4, slot)] +
             [("reddit", q) for q in queries.rotation(queries.REDDIT, 4, slot)] +

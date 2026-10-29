@@ -29,6 +29,23 @@ LINKEDIN_POSTS = [
     '"influencer marketing agency" India "looking for"',
 ]
 
+# Posts asking for vendors/creators the way people actually write them ("URGENT REQUIREMENT", "vendor
+# requirement", "know someone who can connect us with LinkedIn creators"). Search engines do answer these.
+VENDOR_ASKS = [
+    '"urgent requirement" linkedin creators',
+    '"urgent requirement" influencer marketing',
+    '"vendor requirement" creators',
+    '"looking for vendors" creators',
+    '"looking for vendors" influencer',
+    '#hiringlinkedinvendors',
+    '"requirement" "linkedin influencers"',
+    '"connect us with" linkedin creators',
+    '"urgent requirement" influencers brand',
+    '"looking for linkedin creators"',
+    '"influencer requirement" brand',
+    '"creators required" campaign',
+]
+
 # Topical searches that return recent LinkedIn posts about influencer/creator marketing: starting
 # points for the related-posts crawl (search engines rarely answer the exact-ask phrases above).
 LINKEDIN_SEEDS = [

@@ -16,8 +16,8 @@ BRAND_HEADERS = ["Brand / Company", "Signal", "Why Added", "Why Kept", "Market",
                  "Platforms Mentioned", "Matched Text", "Post Text", "Agencies in Comments", "Creators in Comments",
                  "Priority"]
 REMOVED_HEADERS = ["Removed At (IST)", "From Tab", "Reason Removed"] + [h for h in BRAND_HEADERS if h != "Why Kept"]
-PEOPLE_HEADERS = ["Added At (IST)", "Name", "Profile", "Headline", "Page Type", "Country", "Found Via",
-                  "Comment / Post", "Brand", "Brand Post URL"]
+PEOPLE_HEADERS = ["Added At (IST)", "Name", "Company (from comment)", "Public Contact", "Profile", "Headline", "Page Type",
+                  "Country", "Found Via", "Comment / Post", "Brand", "Brand Post URL"]
 
 
 def fmt_time(dt: datetime | None) -> str:

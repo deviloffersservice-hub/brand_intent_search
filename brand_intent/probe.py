@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import time
 
 from . import intent, queries
@@ -12,23 +13,14 @@ from .linkedin import Fetcher
 
 log = logging.getLogger("probe")
 
-VARIANTS = [
-    ("text", "site:linkedin.com/posts looking for influencer marketing agency", "w"),
-    ("text", "site:linkedin.com/posts looking for influencer marketing agency", "m"),
-    ("text", 'site:linkedin.com/posts "looking for an influencer marketing agency"', "m"),
-    ("text", 'site:linkedin.com/posts "influencer marketing agency"', "w"),
-    ("text", "site:linkedin.com/posts looking for influencers brand collaboration", "w"),
-    ("text", "site:linkedin.com/posts looking for creators collaboration", "w"),
-    ("text", "linkedin.com/posts looking for influencer marketing agency", "w"),
-    ("text", "linkedin post looking for influencer marketing agency India", "w"),
-    ("text", "site:linkedin.com/posts hiring influencer marketing agency India", "m"),
-    ("text", "site:linkedin.com/posts healthcare", "w"),  # known to work in the creator project
-    ("text", "site:reddit.com influencer marketing agency recommend", "w"),
-    ("text", "site:reddit.com looking for influencer marketing agency", "m"),
-    ("news", "agency pitch influencer marketing", "w"),
-    ("news", "calls for agency pitch", "w"),
-    ("news", "digital mandate agency India", "w"),
-]
+VARIANTS = [(kind, q, tl) for q in [
+    'site:linkedin.com/posts "urgent requirement" linkedin creators',
+    'site:linkedin.com/posts "urgent requirement" influencer marketing',
+    'site:linkedin.com/posts "looking for vendors" creators',
+    'site:linkedin.com/posts #hiringlinkedinvendors',
+    'site:linkedin.com/posts "connect us with" linkedin creators',
+    'site:linkedin.com/posts "looking for linkedin creators"',
+] for kind, tl in (("text", None), ("text", "m"), ("text", "w"))]
 
 
 def related_check():
@@ -61,12 +53,13 @@ def related_check():
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    related_check()
+    if "--related" in sys.argv:
+        related_check()
     from ddgs import DDGS
     for noisy in ("primp", "ddgs", "httpx"):
         logging.getLogger(noisy).setLevel(logging.ERROR)
-    for kind, q, tl in VARIANTS[:0]:  # search-style checks done (see git history); skipped now
-        for backend in (["auto", "duckduckgo", "brave", "yahoo", "mojeek"] if kind == "text" else ["auto"]):
+    for kind, q, tl in VARIANTS:
+        for backend in (["yahoo", "auto", "duckduckgo", "brave"] if kind == "text" else ["auto"]):
             try:
                 if kind == "text":
                     rows = DDGS().text(q, region="wt-wt", timelimit=tl, max_results=25, backend=backend)

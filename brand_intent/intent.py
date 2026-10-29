@@ -18,7 +18,12 @@ SEEK = (r"(?:looking for|look(?:ing)? out for|seek(?:s|ing)?|searching for|in se
         r"(?:can (?:anyone|you|someone)|please|pls|kindly|any(?:one)?|could you) (?:recommend|suggest|refer)|"
         r"recommendations? (?:for|on)|suggestions? (?:for|on)|any (?:leads|referrals) (?:for|on)|"
         r"who (?:can|could) (?:help|recommend)|invit(?:e|es|ing) (?:pitches|proposals|agencies)|"
-        r"request for proposals?|\bRFP\b|calling all|open to (?:collaborat\w+|partner\w*) with|onboarding)")
+        r"request for proposals?|\bRFP\b|calling all|open to (?:collaborat\w+|partner\w*) with|onboarding|"
+        # "URGENT REQUIREMENT: LinkedIn creators with 10k+ followers", "Know someone who can connect us with ..."
+        r"(?:urgent |immediate )?(?:vendor |creator |influencer )?requirements?(?: for)?\s*[:\-–]?|"
+        r"(?:urgently |immediately )?(?:required|wanted|needed)\s*[:\-–]|"
+        r"(?:know|any(?:one)?|does anyone know) (?:someone|anyone|anybody|of any|any)(?: \w+)? (?:who|that) can|"
+        r"vendors? who can|someone who can|connect us with)")
 GAP = r"[^.!?\n]{0,60}?"  # the target must follow the ask in the same sentence
 
 ROLE_AFTER = (r"(?![- ](?:marketing|agenc|partners?\b|partnerships?\b|firms?\b|platforms?\b|media\b|economy|"
@@ -27,11 +32,15 @@ ROLE_AFTER = (r"(?![- ](?:marketing|agenc|partners?\b|partnerships?\b|firms?\b|p
 TARGETS = {
     "LinkedIn influencers/creators": r"(?:linkedin (?:influencers?|creators?|content creators?|top voices?|thought leaders?)|"
                                      r"(?:influencers?|creators?) on linkedin|linkedin ghost ?writers?)\b" + ROLE_AFTER,
-    "Influencer marketing agency": r"(?:influencer(?:[- ]marketing)? (?:agenc(?:y|ies)|partners?|firms?|platforms?)\b|"
+    "Influencer marketing agency": r"(?:influencer(?:[- ]marketing)? (?:agenc(?:y|ies)|partners?|firms?|platforms?|"
+                                   r"vendors?)\b|"
                                    r"agenc(?:y|ies) (?:for|to (?:handle|run|manage|execute))[^.!?\n]{0,30}"
                                    r"(?:influencer|creator))",
     "Creators / influencers": r"(?:influencers?|content creators?|creators?|ugc creators?|micro[- ]influencers?|"
                               r"nano[- ]influencers?|youtubers?|instagrammers?|bloggers?|kols?)\b" + ROLE_AFTER,
+    # A vendor/agency/partner to supply creators: "vendors who can connect us with LinkedIn creators"
+    "Vendor for creators": r"(?:vendors?|suppliers?|partners?|agenc(?:y|ies))\b[^.!?\n]{0,70}?"
+                           r"(?:creators?|influencers?|kols?)\b",
     "Marketing agency": r"(?:(?:(?:digital|social media|performance|growth|content|creative|branding|pr|linkedin|b2b|"
                         r"marketing|seo|advertising|ad) )+(?:agenc(?:y|ies)|firms?|consultants?|freelancers?)|"
                         r"\ban agency\b|\bagencies\b)\b",
@@ -95,6 +104,13 @@ def wants(text: str) -> list[str]:
         found.remove("Creators / influencers")
     if "Influencer marketing agency" in found and "Marketing agency" in found:
         found.remove("Marketing agency")
+    if "Influencer marketing agency" in found and "Vendor for creators" in found and \
+            not re.search(r"\bvendors?\b", text, re.I):
+        found.remove("Vendor for creators")
+    # "Urgent vendor requirement! Know someone who can connect us with LinkedIn creators?"
+    if found and "Vendor for creators" not in found and re.search(r"\bvendors?\b", text, re.I) and \
+            set(found) & {"LinkedIn influencers/creators", "Creators / influencers"}:
+        found.append("Vendor for creators")
     return found
 
 
@@ -186,6 +202,16 @@ def looks_like_agency(name: str, headline: str = "", slug: str = "") -> bool:
 CREATOR_WORDS = re.compile(r"\b(?:creators?|content creator|influencer(?![- ]marketing)|ugc|youtuber|instagrammer|"
                            r"blogger|vlogger|podcast(?:er| host)?|top voice|storyteller|ghostwriter|"
                            r"\d+(?:\.\d+)?k\+? (?:followers|community|audience))\b", re.I)
+# A commenter pitching a service, in a business voice: "this is exactly what we do at X", "we at TrendCore Media
+# have a strong network", "we have a database of 15000+ creators", "connect with us at ...".
+VENDOR_PITCH = re.compile(
+    r"\b(?:we at|here at|exactly what we do|right in our lane|in our wheelhouse|we (?:work|worked) with|we have (?:a|an) "
+    r"(?:database|network|roster|pool|community)|database of|network of [\d,]+|we (?:specialize|specialise|connect|"
+    r"provide|offer|manage|run|deliver|help)|our (?:network|database|team|agency|roster|clients)|connect with us|"
+    r"reach (?:out to )?us|contact us|feel free to (?:connect|reach)|we'?ve (?:done|run|worked)|(?:dm|call|whatsapp) us)\b",
+    re.I)
+CONTACT = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+|(?:\+91|\+1)?[\s-]?\d{5}[\s-]?\d{5}|\b(?:www\.)?[\w-]+\.(?:com|in|io|co|ai)\b",
+                     re.I)
 AGENCY_OFFER = re.compile(r"\b(?:we can help|we(?:'d| would) love to (?:help|work|partner|connect|discuss)|"
                           r"happy to help|our (?:team|agency)|we (?:specialise|specialize|run|manage|work with)|"
                           r"we've (?:worked|run|helped)|let's (?:connect|discuss|talk))\b", re.I)
@@ -209,7 +235,13 @@ def commenter_type(name: str, headline: str, is_company: bool, comment: str = ""
             return "Agency"
         if CREATOR_WORDS.search(headline):
             return "Creator"
-    if AGENCY_OFFER.search(comment) and any("agency" in a.lower() or "pitch" in a.lower() for a in asked):
+    vendor_ask = any(w in a.lower() for a in asked for w in ("agency", "pitch", "vendor"))
+    if VENDOR_PITCH.search(comment):  # "we at X ...", "we have a database of creators": a business pitching
+        return "Agency"
+    # a bare tag ("Navneet Kaur | Biggbell.com") refers someone else; contact details only count with an offer
+    offers_contact = CONTACT.search(comment) and re.search(r"\b(?:connect|contact|reach|call|dm|whatsapp|mail|write)\b",
+                                                            comment, re.I)
+    if vendor_ask and (AGENCY_OFFER.search(comment) or offers_contact):
         return "Agency"
     if CREATOR_REPLY.search(comment) and set(asked) & {"Creators / influencers", "LinkedIn influencers/creators"}:
         return "Creator"
@@ -286,3 +318,17 @@ def campaign_signal(text: str) -> str:
 MARKETING_JOB_TITLE = re.compile(r"social media|digital marketing|brand manager|brand marketing|content marketing|"
                                  r"performance marketing|growth marketing|marketing manager|head of marketing|"
                                  r"marketing lead|cmo|chief marketing|community manager|partnerships? manager", re.I)
+
+
+def pitch_details(comment: str) -> tuple[str, str]:
+    """(company named in a pitch, public contact left in it): "we at TrendCore Media have ..." -> "TrendCore Media"."""
+    m = re.search(r"\b(?:we at|here at|at|from|with)\s+@?([A-Z][\w&'\-]*(?:\.(?:com|in|io|ai|co))?"
+                  r"(?:[ \t]+[A-Z][\w&'\-]*){0,3})", comment or "")
+    company = m.group(1).strip(" .,'") if m else ""
+    contacts = list(dict.fromkeys(c.strip() for c in CONTACT.findall(comment or "")))
+    return company, ", ".join(contacts[:3])
+
+
+# Comments by our own team are skipped (set ANCHORS_TEAM to a regex of names/companies to skip).
+import os  # noqa: E402
+OWN_TEAM = re.compile(os.environ.get("OWN_TEAM", r"\banchors?\b|@anchors|anchors\.in"), re.I)
